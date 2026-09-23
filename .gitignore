@@ -1,0 +1,24 @@
+# Virtual Environment
+.venv/
+
+# Python Cache
+__pycache__/
+*.pyc
+
+# VS Code
+.vscode/
+
+# PyCharm
+.idea/
+
+# Environment Variables
+.env
+
+# Generated Files
+storage/encrypted/
+storage/decrypted/
+storage/merged/
+storage/logs/
+
+# Generated Keys
+storage/keys/
