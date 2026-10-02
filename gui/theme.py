@@ -16,6 +16,68 @@ def normalize_theme(theme: str | None) -> ThemeName:
     return DARK_THEME
 
 
+def get_message_box_stylesheet(theme: ThemeName) -> str:
+    """Return readable, theme-matched styling for every Qt message box."""
+    if theme == LIGHT_THEME:
+        return """
+            QMessageBox {
+                background-color: #FFFFFF;
+                border: 1px solid #DDE3EA;
+                color: #1F2933;
+            }
+
+            QMessageBox QLabel {
+                background-color: transparent;
+                color: #1F2933;
+            }
+
+            QMessageBox QPushButton {
+                background-color: #E8EEF5;
+                border: 1px solid #C7D2DE;
+                border-radius: 6px;
+                color: #1F2933;
+                min-width: 72px;
+                padding: 6px 12px;
+            }
+
+            QMessageBox QPushButton:hover,
+            QMessageBox QPushButton:default {
+                background-color: #1976D2;
+                border-color: #1976D2;
+                color: #FFFFFF;
+            }
+        """
+
+    return """
+        QMessageBox {
+            background-color: #1B1B1B;
+            border: 1px solid #303030;
+            color: #FFFFFF;
+        }
+
+        QMessageBox QLabel {
+            background-color: transparent;
+            color: #FFFFFF;
+        }
+
+        QMessageBox QPushButton {
+            background-color: #2A2A2A;
+            border: 1px solid #454545;
+            border-radius: 6px;
+            color: #FFFFFF;
+            min-width: 72px;
+            padding: 6px 12px;
+        }
+
+        QMessageBox QPushButton:hover,
+        QMessageBox QPushButton:default {
+            background-color: #1976D2;
+            border-color: #1976D2;
+            color: #FFFFFF;
+        }
+    """
+
+
 def get_app_stylesheet(theme: ThemeName) -> str:
     if theme == LIGHT_THEME:
         return """
@@ -84,8 +146,7 @@ def get_app_stylesheet(theme: ThemeName) -> str:
                 color: #FFFFFF;
             }
 
-            QDialog,
-            QMessageBox {
+            QDialog {
                 background-color: #FFFFFF;
                 color: #1F2933;
             }
@@ -108,7 +169,7 @@ def get_app_stylesheet(theme: ThemeName) -> str:
                 font-weight: 700;
                 padding: 6px;
             }
-        """
+        """ + get_message_box_stylesheet(theme)
 
     return """
         QMainWindow {
@@ -183,7 +244,7 @@ def get_app_stylesheet(theme: ThemeName) -> str:
             font-weight: 700;
             padding: 6px;
         }
-    """
+    """ + get_message_box_stylesheet(theme)
 
 
 def get_home_stylesheet(theme: ThemeName) -> str:
@@ -949,7 +1010,7 @@ def get_workspace_stylesheet(theme: ThemeName, prefix: str) -> str:
             QScrollBar::sub-line:vertical {{
                 height: 0;
             }}
-        """
+        """ + get_message_box_stylesheet(theme)
 
     return f"""
         #{prefix}Page {{
@@ -1086,4 +1147,4 @@ def get_workspace_stylesheet(theme: ThemeName, prefix: str) -> str:
         #secondaryButton:hover {{
             background-color: #3A3A3A;
         }}
-    """
+    """ + get_message_box_stylesheet(theme)
