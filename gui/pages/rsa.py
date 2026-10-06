@@ -1,18 +1,16 @@
-from pathlib import Path
+"""RSA workspace for asymmetric key pair generation and file operations."""
 
+import os
+import subprocess
+import sys
+from pathlib import Path
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
-    QButtonGroup,
-    QFileDialog,
-    QFormLayout,
     QFrame,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
-    QMessageBox,
     QPushButton,
-    QRadioButton,
     QScrollArea,
     QSizePolicy,
     QVBoxLayout,
@@ -20,323 +18,421 @@ from PySide6.QtWidgets import (
 )
 
 from crypto.rsa import RSAService
+from gui.activity import get_activity_tracker
+from gui.components import (
+    CyberCard,
+    PageHeader,
+    PathPickerRow,
+    SegmentedSelector,
+)
+from gui.dialogs import show_error, show_info, show_success, show_warning
 from gui.theme import DARK_THEME, ThemeName, get_workspace_stylesheet
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 class RSAPage(QWidget):
-    """RSA workspace for key generation and file operations."""
+    """RSA workspace with key pair generation, encryption, and decryption cards."""
 
-    MILESTONE_MESSAGE = "Functionality will be implemented in Milestone 3."
-
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
         self.setObjectName("rsaPage")
         self._theme = DARK_THEME
         self.rsa_service = RSAService()
-        self._build_layout()
+
+        self._build_ui()
         self._apply_styles()
 
-    def _build_layout(self) -> None:
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+    def _build_ui(self) -> None:
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
 
-        scroll_area = QScrollArea()
-        scroll_area.setObjectName("rsaScrollArea")
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QFrame.NoFrame)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll = QScrollArea()
+        scroll.setObjectName("rsaScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
         content = QWidget()
-        content.setObjectName("rsaContent")
-        content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(48, 42, 48, 42)
-        content_layout.setSpacing(24)
-        content_layout.setAlignment(Qt.AlignTop)
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(40, 32, 40, 40)
+        layout.setSpacing(24)
 
-        title = QLabel("RSA Workspace")
-        title.setObjectName("rsaTitle")
+        # Header
+        header = PageHeader(
+            "RSA Workspace",
+            "Asymmetric Key Cryptography (RSA-OAEP with SHA-256 padding).",
+            badge_text="RSA-4096 Engine Active",
+            badge_status="success",
+        )
+        layout.addWidget(header)
 
-        subtitle = QLabel("Generate RSA key pairs and prepare file encryption workflows.")
-        subtitle.setObjectName("rsaSubtitle")
+        # Card 1: Key Pair Generation
+        key_gen_card = CyberCard(
+            "RSA Key Pair Generation",
+            "Generate public and private key pairs (.pem) using Rivest-Shamir-Adleman algorithm.",
+        )
+        key_gen_layout = QVBoxLayout()
+        key_gen_layout.setSpacing(14)
 
-        content_layout.addWidget(title)
-        content_layout.addWidget(subtitle)
-        content_layout.addWidget(self._create_key_generation_group())
-        content_layout.addWidget(self._create_encryption_group())
-        content_layout.addWidget(self._create_decryption_group())
-        content_layout.addStretch()
+        # Key Size Selector
+        size_lbl = QLabel("Key Size (bits)")
+        size_lbl.setStyleSheet("font-size: 13px; font-weight: 600; color: #94A3B8;")
+        self.key_size_selector = SegmentedSelector(["2048", "3072", "4096"], default_index=2)
 
-        scroll_area.setWidget(content)
-        layout.addWidget(scroll_area)
+        key_gen_layout.addWidget(size_lbl)
+        key_gen_layout.addWidget(self.key_size_selector)
 
-    def _create_key_generation_group(self) -> QGroupBox:
-        group = QGroupBox("RSA Key Generation")
-        group.setMinimumHeight(188)
-        group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
-        layout = QVBoxLayout(group)
-        layout.setContentsMargins(22, 28, 22, 22)
-        layout.setSpacing(18)
+        # Save Directory
+        self.key_save_folder = PathPickerRow(
+            "Save Folder (Optional)",
+            "Leave blank for default storage/keys location",
+            is_folder=True,
+        )
+        key_gen_layout.addWidget(self.key_save_folder)
 
-        key_size_label = QLabel("Key Size")
-        key_size_label.setObjectName("fieldLabel")
+        # Action Button
+        gen_btn_row = QHBoxLayout()
+        gen_btn_row.addStretch()
+        self.gen_key_btn = QPushButton("Generate RSA Key Pair")
+        self.gen_key_btn.setObjectName("primaryButton")
+        self.gen_key_btn.setCursor(Qt.PointingHandCursor)
+        self.gen_key_btn.setFixedHeight(36)
+        self.gen_key_btn.clicked.connect(self._generate_keys)
+        gen_btn_row.addWidget(self.gen_key_btn)
+        key_gen_layout.addLayout(gen_btn_row)
 
-        key_size_layout = QHBoxLayout()
-        key_size_layout.setContentsMargins(0, 0, 0, 0)
-        key_size_layout.setSpacing(34)
+        # Results Frame
+        self.key_results_frame = self._create_key_pair_results_display()
+        key_gen_layout.addWidget(self.key_results_frame)
+        self.key_results_frame.hide()
 
-        self.key_size_group = QButtonGroup(self)
-        for size in ("2048", "3072", "4096"):
-            button = QRadioButton(size)
-            button.setCursor(Qt.PointingHandCursor)
-            button.setChecked(size == "4096")
-            button.setFixedWidth(96)
-            button.setMinimumHeight(28)
-            self.key_size_group.addButton(button)
-            key_size_layout.addWidget(button)
-        key_size_layout.addStretch()
+        key_gen_card.add_layout(key_gen_layout)
+        layout.addWidget(key_gen_card)
 
-        self.save_location_input = QLineEdit()
-        self.save_location_input.setPlaceholderText("Select folder for generated keys")
+        # Card 2: File Encryption
+        enc_card = CyberCard(
+            "File Encryption",
+            "Encrypt small documents or payloads using the recipient's RSA public key.",
+        )
+        enc_layout = QVBoxLayout()
+        enc_layout.setSpacing(14)
 
-        browse_save_button = self._create_browse_button()
-        browse_save_button.clicked.connect(
-            lambda: self._browse_folder(self.save_location_input)
+        self.enc_pubkey_picker = PathPickerRow(
+            "RSA Public Key (*.pem)",
+            "Select recipient public key file",
+            file_filter="PEM Keys (*.pem);;All Files (*.*)",
+        )
+        self.enc_input_picker = PathPickerRow(
+            "Input File to Encrypt",
+            "Select plaintext file to encrypt",
+        )
+        self.enc_output_picker = PathPickerRow(
+            "Output Directory (Optional)",
+            "Leave blank for default storage/encrypted location",
+            is_folder=True,
         )
 
-        form = QFormLayout()
-        form.setLabelAlignment(Qt.AlignLeft)
-        form.setFormAlignment(Qt.AlignTop)
-        form.setHorizontalSpacing(18)
-        form.setVerticalSpacing(16)
-        form.setRowWrapPolicy(QFormLayout.WrapLongRows)
-        form.addRow(key_size_label, key_size_layout)
-        form.addRow(
-            "Save Location",
-            self._create_path_row(self.save_location_input, browse_save_button),
+        enc_layout.addWidget(self.enc_pubkey_picker)
+        enc_layout.addWidget(self.enc_input_picker)
+        enc_layout.addWidget(self.enc_output_picker)
+
+        enc_btn_row = QHBoxLayout()
+        enc_btn_row.addStretch()
+        self.enc_btn = QPushButton("Encrypt File")
+        self.enc_btn.setObjectName("primaryButton")
+        self.enc_btn.setCursor(Qt.PointingHandCursor)
+        self.enc_btn.setFixedHeight(36)
+        self.enc_btn.clicked.connect(self._encrypt_file)
+        enc_btn_row.addWidget(self.enc_btn)
+        enc_layout.addLayout(enc_btn_row)
+
+        enc_card.add_layout(enc_layout)
+        layout.addWidget(enc_card)
+
+        # Card 3: File Decryption
+        dec_card = CyberCard(
+            "File Decryption",
+            "Decrypt encrypted payloads using your private key and OAEP padding.",
+        )
+        dec_layout = QVBoxLayout()
+        dec_layout.setSpacing(14)
+
+        self.dec_privkey_picker = PathPickerRow(
+            "RSA Private Key (*.pem)",
+            "Select your private key file",
+            file_filter="PEM Keys (*.pem);;All Files (*.*)",
+        )
+        self.dec_input_picker = PathPickerRow(
+            "Encrypted Input File (*.enc)",
+            "Select ciphertext file to decrypt",
+            file_filter="Encrypted Files (*.enc);;All Files (*.*)",
+        )
+        self.dec_output_picker = PathPickerRow(
+            "Output Directory (Optional)",
+            "Leave blank for default storage/decrypted location",
+            is_folder=True,
         )
 
-        generate_button = QPushButton("Generate Keys")
-        generate_button.setObjectName("primaryButton")
-        generate_button.setCursor(Qt.PointingHandCursor)
-        generate_button.clicked.connect(self._generate_keys)
+        dec_layout.addWidget(self.dec_privkey_picker)
+        dec_layout.addWidget(self.dec_input_picker)
+        dec_layout.addWidget(self.dec_output_picker)
 
-        button_row = QHBoxLayout()
-        button_row.addStretch()
-        button_row.addWidget(generate_button)
+        dec_btn_row = QHBoxLayout()
+        dec_btn_row.addStretch()
+        self.dec_btn = QPushButton("Decrypt File")
+        self.dec_btn.setObjectName("primaryButton")
+        self.dec_btn.setCursor(Qt.PointingHandCursor)
+        self.dec_btn.setFixedHeight(36)
+        self.dec_btn.clicked.connect(self._decrypt_file)
+        dec_btn_row.addWidget(self.dec_btn)
+        dec_layout.addLayout(dec_btn_row)
 
-        layout.addLayout(form)
-        layout.addLayout(button_row)
-        return group
+        dec_card.add_layout(dec_layout)
+        layout.addWidget(dec_card)
 
-    def _create_encryption_group(self) -> QGroupBox:
-        group = QGroupBox("File Encryption")
-        group.setMinimumHeight(212)
-        group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
-        layout = QVBoxLayout(group)
-        layout.setContentsMargins(22, 28, 22, 22)
-        layout.setSpacing(18)
+        scroll.setWidget(content)
+        main_layout.addWidget(scroll)
 
-        self.public_key_input = QLineEdit()
-        self.public_key_input.setPlaceholderText("Select RSA public key")
-        public_key_browse = self._create_browse_button()
-        public_key_browse.clicked.connect(lambda: self._browse_file(self.public_key_input))
+    def _create_key_pair_results_display(self) -> QFrame:
+        frame = QFrame()
+        frame.setObjectName("pathResultFrame")
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(8)
 
-        self.input_file_input = QLineEdit()
-        self.input_file_input.setPlaceholderText("Select file to encrypt")
-        input_file_browse = self._create_browse_button()
-        input_file_browse.clicked.connect(lambda: self._browse_file(self.input_file_input))
+        # Public Key Row
+        pub_row = QHBoxLayout()
+        pub_lbl = QLabel("Public Key:")
+        pub_lbl.setObjectName("pathResultLabel")
+        pub_lbl.setFixedWidth(80)
+        frame.pub_path = QLabel("")
+        frame.pub_path.setObjectName("pathResultText")
+        frame.pub_path.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        pub_copy = QPushButton("Copy")
+        pub_copy.setObjectName("secondaryButton")
+        pub_copy.setFixedHeight(24)
+        pub_copy.setFixedWidth(54)
+        pub_copy.clicked.connect(lambda: self._copy_clipboard(frame.pub_path.text()))
 
-        self.encrypt_output_folder_input = QLineEdit()
-        self.encrypt_output_folder_input.setPlaceholderText("Select encrypted output folder")
-        encrypt_output_browse = self._create_browse_button()
-        encrypt_output_browse.clicked.connect(
-            lambda: self._browse_folder(self.encrypt_output_folder_input)
+        pub_row.addWidget(pub_lbl)
+        pub_row.addWidget(frame.pub_path, stretch=1)
+        pub_row.addWidget(pub_copy)
+        layout.addLayout(pub_row)
+
+        # Private Key Row
+        priv_row = QHBoxLayout()
+        priv_lbl = QLabel("Private Key:")
+        priv_lbl.setObjectName("pathResultLabel")
+        priv_lbl.setFixedWidth(80)
+        frame.priv_path = QLabel("")
+        frame.priv_path.setObjectName("pathResultText")
+        frame.priv_path.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        frame.priv_path.setStyleSheet(
+            "font-family: 'Consolas', monospace; font-size: 12px; color: #F8FAFC;"
         )
+        priv_copy = QPushButton("Copy")
+        priv_copy.setObjectName("secondaryButton")
+        priv_copy.setFixedHeight(24)
+        priv_copy.setFixedWidth(54)
+        priv_copy.clicked.connect(lambda: self._copy_clipboard(frame.priv_path.text()))
 
-        form = QFormLayout()
-        form.setLabelAlignment(Qt.AlignLeft)
-        form.setFormAlignment(Qt.AlignTop)
-        form.setHorizontalSpacing(18)
-        form.setVerticalSpacing(16)
-        form.setRowWrapPolicy(QFormLayout.WrapLongRows)
-        form.addRow(
-            "Public Key",
-            self._create_path_row(self.public_key_input, public_key_browse),
+        priv_row.addWidget(priv_lbl)
+        priv_row.addWidget(frame.priv_path, stretch=1)
+        priv_row.addWidget(priv_copy)
+        layout.addLayout(priv_row)
+
+        # Open Folder Row
+        bottom_row = QHBoxLayout()
+        bottom_row.addStretch()
+        open_folder_btn = QPushButton("Open Containing Folder")
+        open_folder_btn.setObjectName("secondaryButton")
+        open_folder_btn.setFixedHeight(26)
+        open_folder_btn.clicked.connect(
+            lambda: self._open_folder(frame.pub_path.text())
         )
-        form.addRow(
-            "Input File",
-            self._create_path_row(self.input_file_input, input_file_browse),
-        )
-        form.addRow(
-            "Output Folder",
-            self._create_path_row(self.encrypt_output_folder_input, encrypt_output_browse),
-        )
+        bottom_row.addWidget(open_folder_btn)
+        layout.addLayout(bottom_row)
 
-        encrypt_button = QPushButton("Encrypt")
-        encrypt_button.setObjectName("primaryButton")
-        encrypt_button.setCursor(Qt.PointingHandCursor)
-        encrypt_button.clicked.connect(self._encrypt_file)
+        return frame
 
-        button_row = QHBoxLayout()
-        button_row.addStretch()
-        button_row.addWidget(encrypt_button)
+    def _copy_clipboard(self, text: str) -> None:
+        if text:
+            clipboard = QGuiApplication.clipboard()
+            if clipboard:
+                clipboard.setText(text)
 
-        layout.addLayout(form)
-        layout.addLayout(button_row)
-        return group
-
-    def _create_decryption_group(self) -> QGroupBox:
-        group = QGroupBox("File Decryption")
-        group.setMinimumHeight(212)
-        group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
-        layout = QVBoxLayout(group)
-        layout.setContentsMargins(22, 28, 22, 22)
-        layout.setSpacing(18)
-
-        self.private_key_input = QLineEdit()
-        self.private_key_input.setPlaceholderText("Select RSA private key")
-        private_key_browse = self._create_browse_button()
-        private_key_browse.clicked.connect(lambda: self._browse_file(self.private_key_input))
-
-        self.encrypted_file_input = QLineEdit()
-        self.encrypted_file_input.setPlaceholderText("Select encrypted file")
-        encrypted_file_browse = self._create_browse_button()
-        encrypted_file_browse.clicked.connect(
-            lambda: self._browse_file(self.encrypted_file_input)
-        )
-
-        self.decrypt_output_folder_input = QLineEdit()
-        self.decrypt_output_folder_input.setPlaceholderText("Select decrypted output folder")
-        decrypt_output_browse = self._create_browse_button()
-        decrypt_output_browse.clicked.connect(
-            lambda: self._browse_folder(self.decrypt_output_folder_input)
-        )
-
-        form = QFormLayout()
-        form.setLabelAlignment(Qt.AlignLeft)
-        form.setFormAlignment(Qt.AlignTop)
-        form.setHorizontalSpacing(18)
-        form.setVerticalSpacing(16)
-        form.setRowWrapPolicy(QFormLayout.WrapLongRows)
-        form.addRow(
-            "Private Key",
-            self._create_path_row(self.private_key_input, private_key_browse),
-        )
-        form.addRow(
-            "Encrypted File",
-            self._create_path_row(self.encrypted_file_input, encrypted_file_browse),
-        )
-        form.addRow(
-            "Output Folder",
-            self._create_path_row(self.decrypt_output_folder_input, decrypt_output_browse),
-        )
-
-        decrypt_button = QPushButton("Decrypt")
-        decrypt_button.setObjectName("primaryButton")
-        decrypt_button.setCursor(Qt.PointingHandCursor)
-        decrypt_button.clicked.connect(self._decrypt_file)
-
-        button_row = QHBoxLayout()
-        button_row.addStretch()
-        button_row.addWidget(decrypt_button)
-
-        layout.addLayout(form)
-        layout.addLayout(button_row)
-        return group
-
-    def _create_path_row(self, line_edit: QLineEdit, browse_button: QPushButton) -> QWidget:
-        row = QWidget()
-        layout = QHBoxLayout(row)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
-        layout.addWidget(line_edit, stretch=1)
-        layout.addWidget(browse_button)
-        return row
-
-    def _create_browse_button(self) -> QPushButton:
-        button = QPushButton("Browse")
-        button.setObjectName("secondaryButton")
-        button.setCursor(Qt.PointingHandCursor)
-        return button
-
-    def _browse_file(self, target: QLineEdit) -> None:
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select File")
-        if file_path:
-            target.setText(file_path)
-
-    def _browse_folder(self, target: QLineEdit) -> None:
-        folder_path = QFileDialog.getExistingDirectory(self, "Select Folder")
-        if folder_path:
-            target.setText(folder_path)
+    def _open_folder(self, file_path_str: str) -> None:
+        if not file_path_str:
+            return
+        folder = Path(file_path_str).parent
+        if folder.exists():
+            if sys.platform == "win32":
+                os.startfile(folder)
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(folder)])
+            else:
+                subprocess.Popen(["xdg-open", str(folder)])
 
     def _generate_keys(self) -> None:
-        selected_button = self.key_size_group.checkedButton()
-        key_size = int(selected_button.text()) if selected_button else 4096
+        try:
+            key_size = int(self.key_size_selector.current_value())
+        except ValueError:
+            key_size = 4096
 
-        save_location = self.save_location_input.text().strip()
-        save_directory = Path(save_location) if save_location else None
+        save_dir = self.key_save_folder.path()
 
         try:
-            public_key_path, private_key_path = self.rsa_service.generate_key_pair(
-                key_size,
-                save_directory,
+            pub_path, priv_path = self.rsa_service.generate_key_pair(key_size, save_dir)
+            pub_str = str(pub_path.resolve())
+            priv_str = str(priv_path.resolve())
+
+            self.key_results_frame.pub_path.setText(pub_str)
+            self.key_results_frame.priv_path.setText(priv_str)
+            self.key_results_frame.show()
+
+            # Pre-fill for user
+            self.enc_pubkey_picker.set_text(pub_str)
+            self.dec_privkey_picker.set_text(priv_str)
+
+            get_activity_tracker().record(
+                operation="Key Pair Generation",
+                algorithm=f"RSA-{key_size}",
+                target_path=pub_path,
+                status="Success",
             )
-            QMessageBox.information(
+
+            details_text = f"Public Key:\n{pub_str}\n\nPrivate Key:\n{priv_str}"
+            show_success(
                 self,
-                "RSA Keys Generated",
-                f"RSA {key_size}-bit key pair generated successfully.\n\n"
-                f"Key Size:\n{key_size}-bit\n\n"
-                f"Public Key:\n{public_key_path.resolve()}\n\n"
-                f"Private Key:\n{private_key_path.resolve()}",
+                "RSA Key Pair Generated",
+                f"Generated a {key_size}-bit RSA key pair.",
+                details=details_text,
+                theme=self._theme,
             )
         except Exception as exc:
-            QMessageBox.critical(self, "RSA Key Generation Failed", str(exc))
+            show_error(
+                self,
+                "Key Pair Generation Failed",
+                f"Unable to generate RSA keys: {exc}",
+                theme=self._theme,
+            )
 
     def _encrypt_file(self) -> None:
+        pub_path = self.enc_pubkey_picker.path()
+        if not pub_path:
+            show_warning(
+                self,
+                "Missing Public Key",
+                "Please select an RSA public key file (*.pem).",
+                theme=self._theme,
+            )
+            return
+
+        input_path = self.enc_input_picker.path()
+        if not input_path:
+            show_warning(
+                self,
+                "Missing Input File",
+                "Please select a file to encrypt.",
+                theme=self._theme,
+            )
+            return
+
+        output_dir = self.enc_output_picker.path()
+        if not output_dir:
+            output_dir = PROJECT_ROOT / "storage" / "encrypted" / "RSA"
+
         try:
             saved_path = self.rsa_service.encrypt_file(
-                self._path_from_input(self.public_key_input, "Public key"),
-                self._path_from_input(self.input_file_input, "Input file"),
-                self._path_from_input(self.encrypt_output_folder_input, "Output folder"),
+                public_key_path=pub_path,
+                input_file_path=input_path,
+                output_folder=output_dir,
             )
-            QMessageBox.information(
+            path_str = str(saved_path.resolve())
+
+            self.dec_input_picker.set_text(path_str)
+
+            get_activity_tracker().record(
+                operation="File Encryption",
+                algorithm="RSA-OAEP",
+                target_path=saved_path,
+                status="Success",
+            )
+
+            show_success(
                 self,
-                "Encryption Successful",
-                "File encrypted successfully.\n\n"
-                f"Saved to:\n{saved_path.resolve()}",
+                "RSA Encryption Complete",
+                f"Encrypted '{input_path.name}' using RSA-OAEP.",
+                details=path_str,
+                theme=self._theme,
             )
         except Exception as exc:
-            QMessageBox.critical(self, "Encryption Failed", str(exc))
+            show_error(
+                self,
+                "RSA Encryption Failed",
+                f"Unable to encrypt file: {exc}",
+                theme=self._theme,
+            )
 
     def _decrypt_file(self) -> None:
+        priv_path = self.dec_privkey_picker.path()
+        if not priv_path:
+            show_warning(
+                self,
+                "Missing Private Key",
+                "Please select an RSA private key file (*.pem).",
+                theme=self._theme,
+            )
+            return
+
+        input_path = self.dec_input_picker.path()
+        if not input_path:
+            show_warning(
+                self,
+                "Missing Encrypted File",
+                "Please select an encrypted file to decrypt.",
+                theme=self._theme,
+            )
+            return
+
+        output_dir = self.dec_output_picker.path()
+        if not output_dir:
+            output_dir = PROJECT_ROOT / "storage" / "decrypted" / "RSA"
+
         try:
             saved_path = self.rsa_service.decrypt_file(
-                self._path_from_input(self.private_key_input, "Private key"),
-                self._path_from_input(self.encrypted_file_input, "Encrypted file"),
-                self._path_from_input(self.decrypt_output_folder_input, "Output folder"),
+                private_key_path=priv_path,
+                encrypted_file_path=input_path,
+                output_folder=output_dir,
             )
-            QMessageBox.information(
+            path_str = str(saved_path.resolve())
+
+            get_activity_tracker().record(
+                operation="File Decryption",
+                algorithm="RSA-OAEP",
+                target_path=saved_path,
+                status="Success",
+            )
+
+            show_success(
                 self,
-                "Decryption Successful",
-                "File decrypted successfully.\n\n"
-                f"Saved to:\n{saved_path.resolve()}",
+                "RSA Decryption Complete",
+                f"Decrypted '{input_path.name}' successfully.",
+                details=path_str,
+                theme=self._theme,
             )
         except Exception as exc:
-            QMessageBox.critical(self, "Decryption Failed", str(exc))
-
-    def _path_from_input(self, line_edit: QLineEdit, field_name: str) -> Path:
-        path_text = line_edit.text().strip()
-        if not path_text:
-            raise ValueError(f"{field_name} is required.")
-
-        return Path(path_text)
-
-    def _show_milestone_message(self) -> None:
-        QMessageBox.information(self, "Milestone 3", self.MILESTONE_MESSAGE)
+            show_error(
+                self,
+                "RSA Decryption Failed",
+                f"Unable to decrypt file: {exc}",
+                theme=self._theme,
+            )
 
     def apply_theme(self, theme: ThemeName) -> None:
         self._theme = theme
+        self.key_size_selector.apply_theme(theme)
         self._apply_styles()
 
     def _apply_styles(self) -> None:

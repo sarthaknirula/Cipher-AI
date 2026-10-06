@@ -1,15 +1,16 @@
-from pathlib import Path
+"""DES workspace for Double DES and Triple DES legacy cryptographic operations."""
 
+import os
+import subprocess
+import sys
+from pathlib import Path
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
-    QFileDialog,
-    QFormLayout,
     QFrame,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -19,19 +20,29 @@ from PySide6.QtWidgets import (
 
 from crypto.double_des import DoubleDESService
 from crypto.triple_des import TripleDESService
+from gui.activity import get_activity_tracker
+from gui.components import (
+    CyberCard,
+    PageHeader,
+    PathPickerRow,
+    StatusBadge,
+)
+from gui.dialogs import show_error, show_info, show_success, show_warning
 from gui.theme import DARK_THEME, ThemeName, get_workspace_stylesheet
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 class DESPage(QWidget):
-    """DES workspace for key generation and file operations."""
+    """Workspace for Double DES or Triple DES legacy encryption."""
 
     SERVICES = {
         "Double DES": (DoubleDESService, 2),
         "Triple DES": (TripleDESService, 3),
     }
 
-    def __init__(self, algorithm_name: str) -> None:
-        super().__init__()
+    def __init__(self, algorithm_name: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
         if algorithm_name not in self.SERVICES:
             raise ValueError(f"Unsupported DES algorithm: {algorithm_name}")
 
@@ -41,332 +52,386 @@ class DESPage(QWidget):
 
         self.setObjectName("desPage")
         self._theme = DARK_THEME
-        self._build_layout()
+
+        self._build_ui()
         self._apply_styles()
 
-    def _build_layout(self) -> None:
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+    def _build_ui(self) -> None:
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
 
-        scroll_area = QScrollArea()
-        scroll_area.setObjectName("desScrollArea")
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QFrame.NoFrame)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll = QScrollArea()
+        scroll.setObjectName("desScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
         content = QWidget()
-        content.setObjectName("desContent")
-        content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(48, 42, 48, 42)
-        content_layout.setSpacing(24)
-        content_layout.setAlignment(Qt.AlignTop)
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(40, 32, 40, 40)
+        layout.setSpacing(24)
 
-        title = QLabel(f"{self.algorithm_name} Workspace")
-        title.setObjectName("desTitle")
-
-        subtitle = QLabel(
-            f"Generate {self.algorithm_name} keys and prepare file encryption workflows."
+        # Header
+        header = PageHeader(
+            f"{self.algorithm_name} Workspace",
+            "Legacy / Compatibility Algorithm (56-bit DES key cascade).",
+            badge_text="Legacy Engine",
+            badge_status="warning",
         )
-        subtitle.setObjectName("desSubtitle")
+        layout.addWidget(header)
 
-        content_layout.addWidget(title)
-        content_layout.addWidget(subtitle)
-        content_layout.addWidget(self._create_key_generation_group())
-        content_layout.addWidget(self._create_encryption_group())
-        content_layout.addWidget(self._create_decryption_group())
-        content_layout.addStretch()
+        # Security Advisory Callout
+        advisory = QFrame()
+        advisory.setObjectName("advisoryFrame")
+        adv_layout = QHBoxLayout(advisory)
+        adv_layout.setContentsMargins(16, 12, 16, 12)
+        adv_layout.setSpacing(10)
 
-        scroll_area.setWidget(content)
-        layout.addWidget(scroll_area)
+        adv_icon = QLabel("Notice:")
+        adv_icon.setObjectName("statTitle")
+        adv_layout.addWidget(adv_icon)
 
-    def _create_key_generation_group(self) -> QGroupBox:
-        group = QGroupBox(f"{self.algorithm_name} Key Generation")
-        group.setMinimumHeight(144)
-        group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
-        layout = QVBoxLayout(group)
-        layout.setContentsMargins(22, 28, 22, 22)
-        layout.setSpacing(18)
-
-        self.save_location_input = QLineEdit()
-        self.save_location_input.setPlaceholderText("Select folder for generated keys")
-
-        browse_save_button = self._create_browse_button()
-        browse_save_button.clicked.connect(
-            lambda: self._browse_folder(self.save_location_input)
+        adv_text = QLabel(
+            f"<b>Compatibility Algorithm:</b> {self.algorithm_name} uses 56-bit DES building blocks "
+            "and is maintained for compatibility and analysis. For modern protection, use AES-256."
         )
+        adv_text.setObjectName("advisoryText")
+        adv_text.setWordWrap(True)
+        adv_layout.addWidget(adv_text, stretch=1)
+        layout.addWidget(advisory)
 
-        form = QFormLayout()
-        form.setLabelAlignment(Qt.AlignLeft)
-        form.setFormAlignment(Qt.AlignTop)
-        form.setHorizontalSpacing(18)
-        form.setVerticalSpacing(16)
-        form.setRowWrapPolicy(QFormLayout.WrapLongRows)
-        form.addRow(
-            "Save Location",
-            self._create_path_row(self.save_location_input, browse_save_button),
+        # Card 1: Key Generation
+        key_gen_card = CyberCard(
+            f"{self.algorithm_name} Key Generation",
+            f"Generate {self.key_count} independent 56-bit DES keys (.key).",
         )
+        key_gen_layout = QVBoxLayout()
+        key_gen_layout.setSpacing(14)
 
-        generate_button = QPushButton("Generate Keys")
-        generate_button.setObjectName("primaryButton")
-        generate_button.setCursor(Qt.PointingHandCursor)
-        generate_button.clicked.connect(self._generate_keys)
-
-        button_row = QHBoxLayout()
-        button_row.addStretch()
-        button_row.addWidget(generate_button)
-
-        layout.addLayout(form)
-        layout.addLayout(button_row)
-        return group
-
-    def _create_encryption_group(self) -> QGroupBox:
-        group = QGroupBox("File Encryption")
-        group.setMinimumHeight(268 + (self.key_count - 1) * 54)
-        group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
-        layout = QVBoxLayout(group)
-        layout.setContentsMargins(22, 28, 22, 22)
-        layout.setSpacing(18)
-
-        self.encrypt_key_inputs = self._create_key_inputs()
-
-        self.input_file_input = QLineEdit()
-        self.input_file_input.setPlaceholderText("Select file to encrypt")
-        input_file_browse = self._create_browse_button()
-        input_file_browse.clicked.connect(lambda: self._browse_file(self.input_file_input))
-
-        self.encrypt_output_folder_input = QLineEdit()
-        self.encrypt_output_folder_input.setPlaceholderText("Select encrypted output folder")
-        encrypt_output_browse = self._create_browse_button()
-        encrypt_output_browse.clicked.connect(
-            lambda: self._browse_folder(self.encrypt_output_folder_input)
+        self.key_save_folder = PathPickerRow(
+            "Save Folder (Optional)",
+            "Leave blank for default storage/keys location",
+            is_folder=True,
         )
+        key_gen_layout.addWidget(self.key_save_folder)
 
-        self.iv_input = QLineEdit()
-        self.iv_input.setPlaceholderText("Enter 8-byte IV")
-        self.iv_helper = QLabel(
-            "Optional. Leave empty to generate a secure random IV automatically."
+        gen_btn_row = QHBoxLayout()
+        gen_btn_row.addStretch()
+        self.gen_key_btn = QPushButton(f"Generate {self.key_count} Keys")
+        self.gen_key_btn.setObjectName("primaryButton")
+        self.gen_key_btn.setCursor(Qt.PointingHandCursor)
+        self.gen_key_btn.setFixedHeight(36)
+        self.gen_key_btn.clicked.connect(self._generate_keys)
+        gen_btn_row.addWidget(self.gen_key_btn)
+        key_gen_layout.addLayout(gen_btn_row)
+
+        self.key_results_frame = self._create_keys_result_display()
+        key_gen_layout.addWidget(self.key_results_frame)
+        self.key_results_frame.hide()
+
+        key_gen_card.add_layout(key_gen_layout)
+        layout.addWidget(key_gen_card)
+
+        # Card 2: File Encryption
+        enc_card = CyberCard(
+            "File Encryption",
+            f"Encrypt file using sequential {self.algorithm_name} passes in CBC mode.",
         )
-        self.iv_helper.setObjectName("helperText")
-        self.iv_helper.setWordWrap(True)
+        enc_layout = QVBoxLayout()
+        enc_layout.setSpacing(14)
 
-        form = QFormLayout()
-        form.setLabelAlignment(Qt.AlignLeft)
-        form.setFormAlignment(Qt.AlignTop)
-        form.setHorizontalSpacing(18)
-        form.setVerticalSpacing(16)
-        form.setRowWrapPolicy(QFormLayout.WrapLongRows)
-
-        self._add_key_rows(form, self.encrypt_key_inputs)
-        form.addRow(
-            "Input File",
-            self._create_path_row(self.input_file_input, input_file_browse),
-        )
-        form.addRow(
-            "Output Folder",
-            self._create_path_row(self.encrypt_output_folder_input, encrypt_output_browse),
-        )
-        form.addRow(
-            "Initialization Vector (IV)",
-            self._create_input_with_helper(self.iv_input, self.iv_helper),
-        )
-
-        encrypt_button = QPushButton("Encrypt")
-        encrypt_button.setObjectName("primaryButton")
-        encrypt_button.setCursor(Qt.PointingHandCursor)
-        encrypt_button.clicked.connect(self._encrypt_file)
-
-        button_row = QHBoxLayout()
-        button_row.addStretch()
-        button_row.addWidget(encrypt_button)
-
-        layout.addLayout(form)
-        layout.addLayout(button_row)
-        return group
-
-    def _create_decryption_group(self) -> QGroupBox:
-        group = QGroupBox("File Decryption")
-        group.setMinimumHeight(212 + (self.key_count - 1) * 54)
-        group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
-        layout = QVBoxLayout(group)
-        layout.setContentsMargins(22, 28, 22, 22)
-        layout.setSpacing(18)
-
-        self.decrypt_key_inputs = self._create_key_inputs()
-
-        self.encrypted_file_input = QLineEdit()
-        self.encrypted_file_input.setPlaceholderText("Select encrypted file")
-        encrypted_file_browse = self._create_browse_button()
-        encrypted_file_browse.clicked.connect(
-            lambda: self._browse_file(self.encrypted_file_input)
-        )
-
-        self.decrypt_output_folder_input = QLineEdit()
-        self.decrypt_output_folder_input.setPlaceholderText("Select decrypted output folder")
-        decrypt_output_browse = self._create_browse_button()
-        decrypt_output_browse.clicked.connect(
-            lambda: self._browse_folder(self.decrypt_output_folder_input)
-        )
-
-        form = QFormLayout()
-        form.setLabelAlignment(Qt.AlignLeft)
-        form.setFormAlignment(Qt.AlignTop)
-        form.setHorizontalSpacing(18)
-        form.setVerticalSpacing(16)
-        form.setRowWrapPolicy(QFormLayout.WrapLongRows)
-
-        self._add_key_rows(form, self.decrypt_key_inputs)
-        form.addRow(
-            "Encrypted File",
-            self._create_path_row(self.encrypted_file_input, encrypted_file_browse),
-        )
-        form.addRow(
-            "Output Folder",
-            self._create_path_row(self.decrypt_output_folder_input, decrypt_output_browse),
-        )
-
-        decrypt_button = QPushButton("Decrypt")
-        decrypt_button.setObjectName("primaryButton")
-        decrypt_button.setCursor(Qt.PointingHandCursor)
-        decrypt_button.clicked.connect(self._decrypt_file)
-
-        button_row = QHBoxLayout()
-        button_row.addStretch()
-        button_row.addWidget(decrypt_button)
-
-        layout.addLayout(form)
-        layout.addLayout(button_row)
-        return group
-
-    def _create_key_inputs(self) -> list[QLineEdit]:
-        key_inputs = []
-        for index in range(1, self.key_count + 1):
-            key_input = QLineEdit()
-            key_input.setPlaceholderText(f"Select {self.algorithm_name} key {index}")
-            key_inputs.append(key_input)
-
-        return key_inputs
-
-    def _add_key_rows(self, form: QFormLayout, key_inputs: list[QLineEdit]) -> None:
-        for index, key_input in enumerate(key_inputs, start=1):
-            key_browse = self._create_browse_button()
-            key_browse.clicked.connect(
-                lambda checked=False, target=key_input: self._browse_file(target)
+        self.enc_key_pickers: list[PathPickerRow] = []
+        for i in range(1, self.key_count + 1):
+            p = PathPickerRow(
+                f"Key {i} File (*.key)",
+                f"Select DES key {i}",
+                file_filter="Key Files (*.key);;All Files (*.*)",
             )
-            form.addRow(
-                f"Key {index}",
-                self._create_path_row(key_input, key_browse),
+            self.enc_key_pickers.append(p)
+            enc_layout.addWidget(p)
+
+        self.enc_input_picker = PathPickerRow(
+            "Input File to Encrypt",
+            "Select plaintext file to encrypt",
+        )
+        self.enc_output_picker = PathPickerRow(
+            "Output Directory (Optional)",
+            "Leave blank for default storage/encrypted directory",
+            is_folder=True,
+        )
+
+        enc_layout.addWidget(self.enc_input_picker)
+        enc_layout.addWidget(self.enc_output_picker)
+
+        # Optional IV (8-byte for DES)
+        iv_col = QVBoxLayout()
+        iv_col.setSpacing(4)
+        iv_lbl = QLabel("Initialization Vector (IV) - Optional (8 bytes / 16 hex chars)")
+        iv_lbl.setObjectName("fieldLabel")
+        self.enc_iv_input = QLineEdit()
+        self.enc_iv_input.setPlaceholderText("Optional: Enter 8-byte hex IV or leave blank")
+        iv_help = QLabel("Leave empty to generate a random 8-byte IV automatically.")
+        iv_help.setObjectName("helperText")
+        iv_col.addWidget(iv_lbl)
+        iv_col.addWidget(self.enc_iv_input)
+        iv_col.addWidget(iv_help)
+        enc_layout.addLayout(iv_col)
+
+        enc_btn_row = QHBoxLayout()
+        enc_btn_row.addStretch()
+        self.enc_btn = QPushButton("Encrypt File")
+        self.enc_btn.setObjectName("primaryButton")
+        self.enc_btn.setCursor(Qt.PointingHandCursor)
+        self.enc_btn.setFixedHeight(36)
+        self.enc_btn.clicked.connect(self._encrypt_file)
+        enc_btn_row.addWidget(self.enc_btn)
+        enc_layout.addLayout(enc_btn_row)
+
+        enc_card.add_layout(enc_layout)
+        layout.addWidget(enc_card)
+
+        # Card 3: File Decryption
+        dec_card = CyberCard(
+            "File Decryption",
+            f"Decrypt file encrypted with {self.algorithm_name}.",
+        )
+        dec_layout = QVBoxLayout()
+        dec_layout.setSpacing(14)
+
+        self.dec_key_pickers: list[PathPickerRow] = []
+        for i in range(1, self.key_count + 1):
+            p = PathPickerRow(
+                f"Key {i} File (*.key)",
+                f"Select DES key {i}",
+                file_filter="Key Files (*.key);;All Files (*.*)",
             )
+            self.dec_key_pickers.append(p)
+            dec_layout.addWidget(p)
 
-    def _create_path_row(self, line_edit: QLineEdit, browse_button: QPushButton) -> QWidget:
-        row = QWidget()
-        layout = QHBoxLayout(row)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
-        layout.addWidget(line_edit, stretch=1)
-        layout.addWidget(browse_button)
-        return row
+        self.dec_input_picker = PathPickerRow(
+            "Encrypted Input File (*.enc)",
+            "Select ciphertext file to decrypt",
+            file_filter="Encrypted Files (*.enc);;All Files (*.*)",
+        )
+        self.dec_output_picker = PathPickerRow(
+            "Output Directory (Optional)",
+            "Leave blank for default storage/decrypted directory",
+            is_folder=True,
+        )
 
-    def _create_input_with_helper(self, line_edit: QLineEdit, helper_label: QLabel) -> QWidget:
-        wrapper = QWidget()
-        layout = QVBoxLayout(wrapper)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
-        layout.addWidget(line_edit)
-        layout.addWidget(helper_label)
-        return wrapper
+        dec_layout.addWidget(self.dec_input_picker)
+        dec_layout.addWidget(self.dec_output_picker)
 
-    def _create_browse_button(self) -> QPushButton:
-        button = QPushButton("Browse")
-        button.setObjectName("secondaryButton")
-        button.setCursor(Qt.PointingHandCursor)
-        return button
+        dec_btn_row = QHBoxLayout()
+        dec_btn_row.addStretch()
+        self.dec_btn = QPushButton("Decrypt File")
+        self.dec_btn.setObjectName("primaryButton")
+        self.dec_btn.setCursor(Qt.PointingHandCursor)
+        self.dec_btn.setFixedHeight(36)
+        self.dec_btn.clicked.connect(self._decrypt_file)
+        dec_btn_row.addWidget(self.dec_btn)
+        dec_layout.addLayout(dec_btn_row)
 
-    def _browse_file(self, target: QLineEdit) -> None:
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select File")
-        if file_path:
-            target.setText(file_path)
+        dec_card.add_layout(dec_layout)
+        layout.addWidget(dec_card)
 
-    def _browse_folder(self, target: QLineEdit) -> None:
-        folder_path = QFileDialog.getExistingDirectory(self, "Select Folder")
-        if folder_path:
-            target.setText(folder_path)
+        scroll.setWidget(content)
+        main_layout.addWidget(scroll)
+
+    def _create_keys_result_display(self) -> QFrame:
+        frame = QFrame()
+        frame.setObjectName("pathResultFrame")
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(8)
+
+        frame.key_labels: list[QLabel] = []
+        for i in range(1, self.key_count + 1):
+            row = QHBoxLayout()
+            lbl = QLabel(f"Key {i}:")
+            lbl.setFixedWidth(60)
+            lbl.setObjectName("pathResultLabel")
+            val = QLabel("")
+            val.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            val.setObjectName("pathResultText")
+            copy_btn = QPushButton("Copy")
+            copy_btn.setObjectName("secondaryButton")
+            copy_btn.setFixedHeight(24)
+            copy_btn.setFixedWidth(54)
+            copy_btn.clicked.connect(lambda checked=False, v=val: self._copy_clipboard(v.text()))
+
+            row.addWidget(lbl)
+            row.addWidget(val, stretch=1)
+            row.addWidget(copy_btn)
+            layout.addLayout(row)
+            frame.key_labels.append(val)
+
+        return frame
+
+    def _copy_clipboard(self, text: str) -> None:
+        if text:
+            clipboard = QGuiApplication.clipboard()
+            if clipboard:
+                clipboard.setText(text)
 
     def _generate_keys(self) -> None:
-        save_location = self.save_location_input.text().strip()
-        save_directory = Path(save_location) if save_location else None
+        save_dir = self.key_save_folder.path()
 
         try:
-            key_paths = self.des_service.generate_key(save_directory)
-            key_details = "\n\n".join(
-                f"Key {index}:\n{key_path.resolve()}"
-                for index, key_path in enumerate(key_paths, start=1)
+            key_paths = self.des_service.generate_key(save_dir)
+            path_strs = [str(p.resolve()) for p in key_paths]
+
+            for i, p_str in enumerate(path_strs):
+                self.key_results_frame.key_labels[i].setText(p_str)
+                # Pre-fill encryption/decryption keys
+                self.enc_key_pickers[i].set_text(p_str)
+                self.dec_key_pickers[i].set_text(p_str)
+
+            self.key_results_frame.show()
+
+            get_activity_tracker().record(
+                operation="Key Generation",
+                algorithm=self.algorithm_name,
+                target_path=key_paths[0],
+                status="Success",
             )
-            QMessageBox.information(
+
+            details_text = "\n".join(
+                f"Key {i+1}: {p_str}" for i, p_str in enumerate(path_strs)
+            )
+            show_success(
                 self,
                 f"{self.algorithm_name} Keys Generated",
-                f"{self.algorithm_name} keys generated successfully.\n\n"
-                f"{key_details}",
+                f"Successfully generated {self.key_count} keys for {self.algorithm_name}.",
+                details=details_text,
+                theme=self._theme,
             )
         except Exception as exc:
-            QMessageBox.critical(
+            show_error(
                 self,
-                f"{self.algorithm_name} Key Generation Failed",
-                str(exc),
+                "Key Generation Failed",
+                f"Unable to generate keys: {exc}",
+                theme=self._theme,
             )
 
     def _encrypt_file(self) -> None:
+        key_paths = [p.path() for p in self.enc_key_pickers]
+        for i, kp in enumerate(key_paths, start=1):
+            if not kp:
+                show_warning(
+                    self,
+                    "Missing Key File",
+                    f"Please select Key {i} before encrypting.",
+                    theme=self._theme,
+                )
+                return
+
+        input_path = self.enc_input_picker.path()
+        if not input_path:
+            show_warning(
+                self,
+                "Missing Input File",
+                "Please select a file to encrypt.",
+                theme=self._theme,
+            )
+            return
+
+        output_dir = self.enc_output_picker.path()
+        if not output_dir:
+            prefix = "DOUBLE_DES" if self.key_count == 2 else "TRIPLE_DES"
+            output_dir = PROJECT_ROOT / "storage" / "encrypted" / prefix
+
+        iv = self.enc_iv_input.text().strip() or None
+
         try:
             saved_path = self.des_service.encrypt(
-                *self._key_paths_from_inputs(self.encrypt_key_inputs),
-                self._path_from_input(self.input_file_input, "Input file"),
-                self._path_from_input(self.encrypt_output_folder_input, "Output folder"),
-                self._optional_text_from_input(self.iv_input),
+                *key_paths,
+                input_file_path=input_path,
+                output_folder=output_dir,
+                iv=iv,
             )
-            QMessageBox.information(
+            path_str = str(saved_path.resolve())
+
+            self.dec_input_picker.set_text(path_str)
+
+            get_activity_tracker().record(
+                operation="File Encryption",
+                algorithm=self.algorithm_name,
+                target_path=saved_path,
+                status="Success",
+            )
+
+            show_success(
                 self,
                 "Encryption Successful",
-                "File encrypted successfully.\n\n"
-                f"Saved to:\n{saved_path.resolve()}",
+                f"File '{input_path.name}' was encrypted using {self.algorithm_name}.",
+                details=path_str,
+                theme=self._theme,
             )
         except Exception as exc:
-            QMessageBox.critical(self, "Encryption Failed", str(exc))
+            show_error(
+                self,
+                "Encryption Failed",
+                f"Failed to encrypt file: {exc}",
+                theme=self._theme,
+            )
 
     def _decrypt_file(self) -> None:
+        key_paths = [p.path() for p in self.dec_key_pickers]
+        for i, kp in enumerate(key_paths, start=1):
+            if not kp:
+                show_warning(
+                    self,
+                    "Missing Key File",
+                    f"Please select Key {i} before decrypting.",
+                    theme=self._theme,
+                )
+                return
+
+        input_path = self.dec_input_picker.path()
+        if not input_path:
+            show_warning(
+                self,
+                "Missing Encrypted File",
+                "Please select an encrypted file to decrypt.",
+                theme=self._theme,
+            )
+            return
+
+        output_dir = self.dec_output_picker.path()
+        if not output_dir:
+            prefix = "DOUBLE_DES" if self.key_count == 2 else "TRIPLE_DES"
+            output_dir = PROJECT_ROOT / "storage" / "decrypted" / prefix
+
         try:
             saved_path = self.des_service.decrypt(
-                *self._key_paths_from_inputs(self.decrypt_key_inputs),
-                self._path_from_input(self.encrypted_file_input, "Encrypted file"),
-                self._path_from_input(self.decrypt_output_folder_input, "Output folder"),
+                *key_paths,
+                encrypted_file_path=input_path,
+                output_folder=output_dir,
             )
-            QMessageBox.information(
+            path_str = str(saved_path.resolve())
+
+            get_activity_tracker().record(
+                operation="File Decryption",
+                algorithm=self.algorithm_name,
+                target_path=saved_path,
+                status="Success",
+            )
+
+            show_success(
                 self,
                 "Decryption Successful",
-                "File decrypted successfully.\n\n"
-                f"Saved to:\n{saved_path.resolve()}",
+                f"File '{input_path.name}' was decrypted successfully.",
+                details=path_str,
+                theme=self._theme,
             )
         except Exception as exc:
-            QMessageBox.critical(self, "Decryption Failed", str(exc))
-
-    def _key_paths_from_inputs(self, key_inputs: list[QLineEdit]) -> list[Path]:
-        return [
-            self._path_from_input(key_input, f"Key {index}")
-            for index, key_input in enumerate(key_inputs, start=1)
-        ]
-
-    def _path_from_input(self, line_edit: QLineEdit, field_name: str) -> Path:
-        path_text = line_edit.text().strip()
-        if not path_text:
-            raise ValueError(f"{field_name} is required.")
-
-        return Path(path_text)
-
-    def _optional_text_from_input(self, line_edit: QLineEdit) -> str | None:
-        text = line_edit.text()
-        if not text:
-            return None
-
-        return text
+            show_error(
+                self,
+                "Decryption Failed",
+                f"Failed to decrypt file: {exc}",
+                theme=self._theme,
+            )
 
     def apply_theme(self, theme: ThemeName) -> None:
         self._theme = theme
