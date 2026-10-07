@@ -58,7 +58,7 @@ class SettingsPage(QWidget):
         header = PageHeader(
             "Settings & Diagnostics",
             "Configure appearance, view AI pipeline status, and check cryptographic engines.",
-            badge_text="Config Loaded",
+            badge_text="Ready",
             badge_status="success",
         )
         layout.addWidget(header)
@@ -77,7 +77,7 @@ class SettingsPage(QWidget):
         self.theme_combo = QComboBox()
         self.theme_combo.addItems([DARK_THEME, LIGHT_THEME])
         self.theme_combo.setCursor(Qt.PointingHandCursor)
-        self.theme_combo.setFixedWidth(180)
+        self.theme_combo.setFixedWidth(200)
         self.theme_combo.currentTextChanged.connect(self._on_theme_changed)
 
         app_layout.addRow(theme_lbl, self.theme_combo)
@@ -94,21 +94,21 @@ class SettingsPage(QWidget):
         ai_layout.setSpacing(14)
 
         status_badge = StatusBadge(
-            "Configured & Ready" if has_key else "Key Not Set in .env",
+            "CONFIGURED & READY" if has_key else "KEY NOT CONFIGURED IN .ENV",
             "success" if has_key else "warning",
         )
-        ai_layout.addRow("Gemini API Status:", status_badge)
+        ai_layout.addRow("Gemini API Status", status_badge)
 
         model_lbl = QLabel(getattr(core_settings, "GEMINI_MODEL", "gemini-3.5-flash-lite"))
         model_lbl.setObjectName("codeTag")
-        ai_layout.addRow("Active Model:", model_lbl)
+        ai_layout.addRow("Active Model", model_lbl)
 
         temp_lbl = QLabel(str(getattr(core_settings, "GEMINI_TEMPERATURE", 0.2)))
         temp_lbl.setObjectName("codeText")
-        ai_layout.addRow("Sampling Temperature:", temp_lbl)
+        ai_layout.addRow("Sampling Temperature", temp_lbl)
 
         sec_note = QLabel(
-            "Security Policy: The application loads credentials from the local environment (.env). "
+            "Security policy: The application loads credentials from the local environment (.env). "
             "Secret API keys are never displayed on screen or logged."
         )
         sec_note.setObjectName("helperText")
@@ -126,13 +126,13 @@ class SettingsPage(QWidget):
         sys_layout = QFormLayout()
         sys_layout.setSpacing(12)
 
-        sys_layout.addRow("Application:", QLabel("CipherAI 2.0"))
-        sys_layout.addRow("Python Runtime:", QLabel(f"Python {sys.version.split()[0]}"))
-        sys_layout.addRow("GUI Framework:", QLabel("PySide6 / Qt 6.11"))
-        sys_layout.addRow("Cryptography Provider:", QLabel("cryptography (OpenSSL Hazmat)"))
-        sys_layout.addRow("AES Specification:", QLabel("AES-CBC (128/192/256-bit) with PKCS#7"))
-        sys_layout.addRow("RSA Specification:", QLabel("RSA-OAEP (2048/3072/4096-bit) with SHA-256"))
-        sys_layout.addRow("DES Specifications:", QLabel("Double DES & Triple DES (3DES-EDE)"))
+        sys_layout.addRow("Application", QLabel("CipherAI Desktop Suite v2.0 Enterprise"))
+        sys_layout.addRow("Python Runtime", QLabel(f"Python {sys.version.split()[0]}"))
+        sys_layout.addRow("GUI Framework", QLabel("PySide6 / Qt 6.11"))
+        sys_layout.addRow("Cryptography Provider", QLabel("cryptography (OpenSSL Hazmat)"))
+        sys_layout.addRow("AES Specification", QLabel("AES-CBC (128/192/256-bit) with PKCS#7"))
+        sys_layout.addRow("RSA Specification", QLabel("RSA-OAEP (2048/3072/4096-bit) with SHA-256"))
+        sys_layout.addRow("DES Specifications", QLabel("Double DES & Triple DES (3DES-EDE)"))
 
         sys_card.add_layout(sys_layout)
         layout.addWidget(sys_card)

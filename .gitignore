@@ -22,3 +22,9 @@ storage/logs/
 
 # Generated Keys
 storage/keys/
+
+# Media & Video Recordings
+*.mp4
+*.mkv
+*.avi
+*.mov

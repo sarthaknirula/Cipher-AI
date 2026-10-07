@@ -59,8 +59,8 @@ class FilesPage(QWidget):
         # Header with actions
         header_row = QHBoxLayout()
         header = PageHeader(
-            "Workspace Files",
-            "Files and key records generated during your current session.",
+            "Workspace Files & Session Audit",
+            "Real-time audit log of all keys generated, files encrypted, and files decrypted during this session.",
             badge_text="Session Active",
             badge_status="info",
         )
@@ -104,7 +104,7 @@ class FilesPage(QWidget):
         table = QTableWidget()
         table.setColumnCount(6)
         table.setHorizontalHeaderLabels(
-            ["Filename", "Operation", "Algorithm", "Location", "Status", "Time"]
+            ["Target Name", "Operation", "Algorithm", "Absolute Location", "Status", "Timestamp"]
         )
         table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
@@ -142,12 +142,14 @@ class FilesPage(QWidget):
         copy_btn = QPushButton("Copy Selected Path")
         copy_btn.setObjectName("secondaryButton")
         copy_btn.setFixedHeight(34)
+        copy_btn.setCursor(Qt.PointingHandCursor)
         copy_btn.clicked.connect(lambda: self._copy_selected_path(table))
         btn_bar.addWidget(copy_btn)
 
-        open_folder_btn = QPushButton("Open Selected Containing Folder")
+        open_folder_btn = QPushButton("Open Containing Folder")
         open_folder_btn.setObjectName("secondaryButton")
         open_folder_btn.setFixedHeight(34)
+        open_folder_btn.setCursor(Qt.PointingHandCursor)
         open_folder_btn.clicked.connect(lambda: self._open_selected_folder(table))
         btn_bar.addWidget(open_folder_btn)
 
@@ -187,4 +189,3 @@ class FilesPage(QWidget):
 
     def _apply_styles(self) -> None:
         self.setStyleSheet(get_files_stylesheet(self._theme))
-

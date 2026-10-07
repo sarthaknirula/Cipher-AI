@@ -20,7 +20,7 @@ DialogType = Literal["success", "error", "warning", "info"]
 
 
 class CyberDialog(QDialog):
-    """Modern modal dialog with high-contrast text and theme support."""
+    """Modern modal dialog with high-contrast text, technical tag, and theme support."""
 
     TAGS = {
         "success": ("SUCCESS", "#10B981", "rgba(16, 185, 129, 0.12)"),
@@ -47,14 +47,14 @@ class CyberDialog(QDialog):
 
         self.setWindowTitle(title)
         self.setModal(True)
-        self.setMinimumWidth(440)
-        self.setMaximumWidth(580)
+        self.setMinimumWidth(460)
+        self.setMaximumWidth(600)
         self._build_ui()
         self._apply_styles()
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(22, 22, 22, 22)
+        layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(16)
 
         # Header row
@@ -67,7 +67,7 @@ class CyberDialog(QDialog):
         )
 
         tag_badge = QLabel(tag_text)
-        tag_badge.setFixedHeight(22)
+        tag_badge.setFixedHeight(24)
         tag_badge.setAlignment(Qt.AlignCenter)
         tag_badge.setStyleSheet(
             f"""
@@ -76,6 +76,7 @@ class CyberDialog(QDialog):
                 color: {color};
                 font-size: 11px;
                 font-weight: 700;
+                letter-spacing: 0.5px;
                 border-radius: 4px;
                 border: 1px solid {color};
                 padding: 0px 8px;
@@ -97,7 +98,7 @@ class CyberDialog(QDialog):
         self.body_label.setObjectName("dialogBodyLabel")
         self.body_label.setWordWrap(True)
         self.body_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.body_label.setStyleSheet("font-size: 13px; line-height: 1.4;")
+        self.body_label.setStyleSheet("font-size: 13px; line-height: 1.5;")
         layout.addWidget(self.body_label)
 
         # Optional details area
@@ -105,21 +106,21 @@ class CyberDialog(QDialog):
             details_frame = QFrame()
             details_frame.setObjectName("dialogDetailsFrame")
             details_layout = QVBoxLayout(details_frame)
-            details_layout.setContentsMargins(12, 10, 12, 10)
+            details_layout.setContentsMargins(14, 10, 14, 10)
             details_layout.setSpacing(6)
 
             details_header = QHBoxLayout()
-            details_title = QLabel("Details / Path")
+            details_title = QLabel("OUTPUT / PATH DETAILS")
             details_title.setStyleSheet(
-                "font-size: 11px; font-weight: 600; text-transform: uppercase;"
+                "font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #64748B;"
             )
             details_header.addWidget(details_title)
             details_header.addStretch()
 
-            copy_btn = QPushButton("Copy")
+            copy_btn = QPushButton("Copy Details")
             copy_btn.setObjectName("secondaryButton")
-            copy_btn.setFixedHeight(24)
-            copy_btn.setFixedWidth(54)
+            copy_btn.setFixedHeight(26)
+            copy_btn.setFixedWidth(88)
             copy_btn.setCursor(Qt.PointingHandCursor)
             copy_btn.clicked.connect(self._copy_details)
             details_header.addWidget(copy_btn)
@@ -129,7 +130,7 @@ class CyberDialog(QDialog):
             details_box = QTextEdit()
             details_box.setReadOnly(True)
             details_box.setPlainText(self.details_text)
-            details_box.setFixedHeight(72)
+            details_box.setFixedHeight(76)
             details_box.setStyleSheet(
                 "font-family: 'Consolas', 'Courier New', monospace; font-size: 12px;"
             )
@@ -144,8 +145,8 @@ class CyberDialog(QDialog):
         ok_button = QPushButton("OK")
         ok_button.setObjectName("primaryButton")
         ok_button.setCursor(Qt.PointingHandCursor)
-        ok_button.setMinimumWidth(88)
-        ok_button.setFixedHeight(32)
+        ok_button.setMinimumWidth(94)
+        ok_button.setFixedHeight(34)
         ok_button.setDefault(True)
         ok_button.clicked.connect(self.accept)
         button_row.addWidget(ok_button)
@@ -182,6 +183,31 @@ class CyberDialog(QDialog):
                 background-color: transparent;
                 color: {colors["text_primary"]};
                 border: none;
+            }}
+            QPushButton#primaryButton {{
+                background-color: {colors["primary"]};
+                color: #FFFFFF;
+                border: 1px solid {colors["primary"]};
+                border-radius: 6px;
+                font-weight: 700;
+                padding: 6px 16px;
+            }}
+            QPushButton#primaryButton:hover {{
+                background-color: {colors["primary_hover"]};
+                border-color: {colors["primary_hover"]};
+            }}
+            QPushButton#secondaryButton {{
+                background-color: {colors["secondary_bg"]};
+                color: {colors["secondary_text"]};
+                border: 1px solid {colors["border_normal"]};
+                border-radius: 6px;
+                font-weight: 600;
+                padding: 6px 14px;
+            }}
+            QPushButton#secondaryButton:hover {{
+                background-color: {colors["secondary_hover"]};
+                color: {colors["text_primary"]};
+                border-color: {colors["border_focus"]};
             }}
             """
         )

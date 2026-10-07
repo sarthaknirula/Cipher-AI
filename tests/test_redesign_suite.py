@@ -326,6 +326,47 @@ class RedesignFunctionalTestSuite(unittest.TestCase):
         self.assertEqual(items[0].target_name, "test.aes.enc")
         tracker.clear()
 
+    # Chat pause & send buttons verification
+    def test_23_chat_pause_and_send_buttons(self) -> None:
+        home_page = HomePage()
+        home_page.show()
+        self.assertIsNotNone(home_page.pause_button)
+        self.assertIsNotNone(home_page.send_button)
+        self.assertFalse(home_page.pause_button.isEnabled())
+        self.assertTrue(home_page.send_button.isEnabled())
+
+        # Simulate busy state (waiting for response)
+        home_page._set_busy(True)
+        self.assertTrue(home_page._is_busy)
+        self.assertTrue(home_page.pause_button.isEnabled())
+        self.assertFalse(home_page.pause_button.isHidden())
+        self.assertFalse(home_page.send_button.isHidden())
+        self.assertFalse(home_page.send_button.isEnabled())
+
+        # Test clicking pause
+        home_page._pause_request()
+        self.assertFalse(home_page._is_busy)
+        self.assertFalse(home_page.pause_button.isEnabled())
+        self.assertTrue(home_page.send_button.isEnabled())
+        home_page.close()
+
+    # Top control bar and brand verification
+    def test_24_top_control_bar_and_sidebar_brand(self) -> None:
+        window = MainWindow()
+        self.assertIsNotNone(window.top_bar)
+        self.assertIn("AI ASSISTANT READY", window.top_ai_status.text())
+
+        # AI busy updates status
+        window._handle_ai_busy_changed(True)
+        self.assertIn("AI ASSISTANT BUSY", window.top_ai_status.text())
+        window._handle_ai_busy_changed(False)
+        self.assertIn("AI ASSISTANT READY", window.top_ai_status.text())
+
+        # Sidebar brand badge
+        self.assertEqual(window.sidebar.brand_cipher.text(), "CIPHER")
+        self.assertEqual(window.sidebar.brand_ai_badge.text(), "AI")
+        window.close()
+
 
 if __name__ == "__main__":
     unittest.main()

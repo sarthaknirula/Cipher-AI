@@ -25,6 +25,7 @@ from gui.components import (
     CyberCard,
     PageHeader,
     PathPickerRow,
+    SpecPill,
     StatusBadge,
 )
 from gui.dialogs import show_error, show_info, show_success, show_warning
@@ -74,26 +75,37 @@ class DESPage(QWidget):
         # Header
         header = PageHeader(
             f"{self.algorithm_name} Workspace",
-            "Legacy / Compatibility Algorithm (56-bit DES key cascade).",
+            "Compatibility / Legacy Cascade Algorithm (56-bit DES building blocks).",
             badge_text="Legacy Engine",
             badge_status="warning",
         )
         layout.addWidget(header)
 
+        # Technical Specifications Bar
+        spec_row = QHBoxLayout()
+        spec_row.setSpacing(10)
+        spec_row.addWidget(SpecPill("Standard", "ANSI X3.92 / NIST SP 800-67"))
+        spec_row.addWidget(SpecPill("Cipher Mode", "CBC (Cipher Block Chaining)"))
+        spec_row.addWidget(SpecPill("Block Size", "64 bits (8 bytes)"))
+        spec_row.addWidget(SpecPill("Keys Required", f"{self.key_count} Distinct 56-bit Keys"))
+        spec_row.addStretch()
+        layout.addLayout(spec_row)
+
         # Security Advisory Callout
         advisory = QFrame()
         advisory.setObjectName("advisoryFrame")
         adv_layout = QHBoxLayout(advisory)
-        adv_layout.setContentsMargins(16, 12, 16, 12)
-        adv_layout.setSpacing(10)
+        adv_layout.setContentsMargins(18, 14, 18, 14)
+        adv_layout.setSpacing(12)
 
-        adv_icon = QLabel("Notice:")
-        adv_icon.setObjectName("statTitle")
+        adv_icon = QLabel("⚠️")
+        adv_icon.setStyleSheet("font-size: 16px;")
         adv_layout.addWidget(adv_icon)
 
         adv_text = QLabel(
-            f"<b>Compatibility Algorithm:</b> {self.algorithm_name} uses 56-bit DES building blocks "
-            "and is maintained for compatibility and analysis. For modern protection, use AES-256."
+            f"<b>Security Notice:</b> {self.algorithm_name} uses 56-bit DES building blocks "
+            "and is maintained strictly for backwards compatibility and educational analysis. For modern high-assurance "
+            "protection, use AES-256. Double DES in particular is no stronger than single DES: a meet-in-the-middle attack breaks it in about 2^57 steps."
         )
         adv_text.setObjectName("advisoryText")
         adv_text.setWordWrap(True)
@@ -109,9 +121,10 @@ class DESPage(QWidget):
         key_gen_layout.setSpacing(14)
 
         self.key_save_folder = PathPickerRow(
-            "Save Folder (Optional)",
+            "Save Folder",
             "Leave blank for default storage/keys location",
             is_folder=True,
+            required=False,
         )
         key_gen_layout.addWidget(self.key_save_folder)
 
@@ -146,18 +159,21 @@ class DESPage(QWidget):
                 f"Key {i} File (*.key)",
                 f"Select DES key {i}",
                 file_filter="Key Files (*.key);;All Files (*.*)",
+                required=True,
             )
             self.enc_key_pickers.append(p)
             enc_layout.addWidget(p)
 
         self.enc_input_picker = PathPickerRow(
-            "Input File to Encrypt",
+            "Input Plaintext File",
             "Select plaintext file to encrypt",
+            required=True,
         )
         self.enc_output_picker = PathPickerRow(
-            "Output Directory (Optional)",
-            "Leave blank for default storage/encrypted directory",
+            "Output Directory",
+            "Leave blank for default storage/encrypted location",
             is_folder=True,
+            required=False,
         )
 
         enc_layout.addWidget(self.enc_input_picker)
@@ -166,20 +182,28 @@ class DESPage(QWidget):
         # Optional IV (8-byte for DES)
         iv_col = QVBoxLayout()
         iv_col.setSpacing(4)
-        iv_lbl = QLabel("Initialization Vector (IV) - Optional (8 bytes / 16 hex chars)")
+        iv_lbl_row = QHBoxLayout()
+        iv_lbl_row.setSpacing(6)
+        iv_lbl = QLabel("Initialization Vector (IV)")
         iv_lbl.setObjectName("fieldLabel")
+        iv_badge = QLabel("[OPTIONAL - 8 BYTES / 16 HEX CHARS]")
+        iv_badge.setObjectName("optionalBadge")
+        iv_lbl_row.addWidget(iv_lbl)
+        iv_lbl_row.addWidget(iv_badge)
+        iv_lbl_row.addStretch()
+
         self.enc_iv_input = QLineEdit()
-        self.enc_iv_input.setPlaceholderText("Optional: Enter 8-byte hex IV or leave blank")
+        self.enc_iv_input.setPlaceholderText("Optional: Enter 8-byte hex IV (16 hex chars) or leave blank")
         iv_help = QLabel("Leave empty to generate a random 8-byte IV automatically.")
         iv_help.setObjectName("helperText")
-        iv_col.addWidget(iv_lbl)
+        iv_col.addLayout(iv_lbl_row)
         iv_col.addWidget(self.enc_iv_input)
         iv_col.addWidget(iv_help)
         enc_layout.addLayout(iv_col)
 
         enc_btn_row = QHBoxLayout()
         enc_btn_row.addStretch()
-        self.enc_btn = QPushButton("Encrypt File")
+        self.enc_btn = QPushButton("🔒 Encrypt File")
         self.enc_btn.setObjectName("primaryButton")
         self.enc_btn.setCursor(Qt.PointingHandCursor)
         self.enc_btn.setFixedHeight(36)
@@ -188,7 +212,6 @@ class DESPage(QWidget):
         enc_layout.addLayout(enc_btn_row)
 
         enc_card.add_layout(enc_layout)
-        layout.addWidget(enc_card)
 
         # Card 3: File Decryption
         dec_card = CyberCard(
@@ -204,6 +227,7 @@ class DESPage(QWidget):
                 f"Key {i} File (*.key)",
                 f"Select DES key {i}",
                 file_filter="Key Files (*.key);;All Files (*.*)",
+                required=True,
             )
             self.dec_key_pickers.append(p)
             dec_layout.addWidget(p)
@@ -212,11 +236,13 @@ class DESPage(QWidget):
             "Encrypted Input File (*.enc)",
             "Select ciphertext file to decrypt",
             file_filter="Encrypted Files (*.enc);;All Files (*.*)",
+            required=True,
         )
         self.dec_output_picker = PathPickerRow(
             "Output Directory (Optional)",
             "Leave blank for default storage/decrypted directory",
             is_folder=True,
+            required=False,
         )
 
         dec_layout.addWidget(self.dec_input_picker)
@@ -224,7 +250,7 @@ class DESPage(QWidget):
 
         dec_btn_row = QHBoxLayout()
         dec_btn_row.addStretch()
-        self.dec_btn = QPushButton("Decrypt File")
+        self.dec_btn = QPushButton("🔓 Decrypt File")
         self.dec_btn.setObjectName("primaryButton")
         self.dec_btn.setCursor(Qt.PointingHandCursor)
         self.dec_btn.setFixedHeight(36)
@@ -233,7 +259,13 @@ class DESPage(QWidget):
         dec_layout.addLayout(dec_btn_row)
 
         dec_card.add_layout(dec_layout)
-        layout.addWidget(dec_card)
+
+        # 2-column side-by-side layout matching reference design
+        ops_row = QHBoxLayout()
+        ops_row.setSpacing(16)
+        ops_row.addWidget(enc_card, stretch=1)
+        ops_row.addWidget(dec_card, stretch=1)
+        layout.addLayout(ops_row)
 
         scroll.setWidget(content)
         main_layout.addWidget(scroll)
@@ -242,12 +274,13 @@ class DESPage(QWidget):
         frame = QFrame()
         frame.setObjectName("pathResultFrame")
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setContentsMargins(14, 12, 14, 12)
         layout.setSpacing(8)
 
         frame.key_labels: list[QLabel] = []
         for i in range(1, self.key_count + 1):
             row = QHBoxLayout()
+            row.setSpacing(10)
             lbl = QLabel(f"Key {i}:")
             lbl.setFixedWidth(60)
             lbl.setObjectName("pathResultLabel")
@@ -266,6 +299,18 @@ class DESPage(QWidget):
             layout.addLayout(row)
             frame.key_labels.append(val)
 
+        # Open Containing Folder
+        bottom_row = QHBoxLayout()
+        bottom_row.addStretch()
+        open_folder_btn = QPushButton("Open Containing Folder")
+        open_folder_btn.setObjectName("secondaryButton")
+        open_folder_btn.setFixedHeight(28)
+        open_folder_btn.clicked.connect(
+            lambda: self._open_folder(frame.key_labels[0].text() if frame.key_labels else "")
+        )
+        bottom_row.addWidget(open_folder_btn)
+        layout.addLayout(bottom_row)
+
         return frame
 
     def _copy_clipboard(self, text: str) -> None:
@@ -273,6 +318,18 @@ class DESPage(QWidget):
             clipboard = QGuiApplication.clipboard()
             if clipboard:
                 clipboard.setText(text)
+
+    def _open_folder(self, file_path_str: str) -> None:
+        if not file_path_str:
+            return
+        folder = Path(file_path_str).parent
+        if folder.exists():
+            if sys.platform == "win32":
+                os.startfile(folder)
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(folder)])
+            else:
+                subprocess.Popen(["xdg-open", str(folder)])
 
     def _generate_keys(self) -> None:
         save_dir = self.key_save_folder.path()

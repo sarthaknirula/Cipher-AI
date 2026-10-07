@@ -30,13 +30,13 @@ from gui.components import PageHeader, StatusBadge
 from gui.theme import DARK_THEME, ThemeName, get_home_stylesheet
 
 WELCOME_MESSAGE = (
-    "CipherAI Assistant online.\n\n"
+    "CipherAI Security Copilot online.\n\n"
     "I can assist you with cryptographic operations and analysis:\n"
     "• Generate AES, RSA, and DES keys\n"
     "• Encrypt and decrypt files\n"
     "• Explain cryptographic algorithms and security standards\n"
     "• Compare symmetric vs asymmetric encryption\n\n"
-    "Type a request below or select a quick action to begin."
+    "Type a command below or select a quick action to begin."
 )
 
 
@@ -77,16 +77,23 @@ class AIWorker(QObject):
             conversation_manager or get_conversation_manager()
         )
         self.session_state = session_state or get_session_state()
+        self.is_cancelled = False
 
     def run(self) -> None:
         self.started.emit()
         try:
+            if self.is_cancelled:
+                return
             result = self._run_pipeline()
+            if self.is_cancelled:
+                return
         except Exception as exc:
-            self.error_occurred.emit(self._friendly_error_message(exc))
+            if not self.is_cancelled:
+                self.error_occurred.emit(self._friendly_error_message(exc))
         else:
-            self._record_success(result)
-            self.result_ready.emit(result)
+            if not self.is_cancelled:
+                self._record_success(result)
+                self.result_ready.emit(result)
         finally:
             self.finished.emit()
 
@@ -230,7 +237,7 @@ class ChatInput(QTextEdit):
 
 
 class MessageBubble(QFrame):
-    """Chat message bubble with role avatar and timestamp."""
+    """Chat message bubble with role avatar, timestamp, and copy action."""
 
     def __init__(
         self,
@@ -245,39 +252,47 @@ class MessageBubble(QFrame):
         self.setMaximumWidth(760)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(8)
 
-        # Header with role title & copy button
-        hdr_row = QHBoxLayout()
-        role_title = title or ("CipherAI" if role != "user" else "You")
+        if role == "user":
+            layout.setContentsMargins(16, 10, 16, 10)
+            body = QLabel(message)
+            body.setObjectName("userMessageText")
+            body.setTextFormat(Qt.PlainText)
+            body.setWordWrap(True)
+            body.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            layout.addWidget(body)
+        else:
+            layout.setContentsMargins(16, 14, 16, 14)
+            hdr_row = QHBoxLayout()
+            role_title = title or "CipherAI"
 
-        title_lbl = QLabel(role_title)
-        title_lbl.setObjectName(f"{base_name}Title")
-        hdr_row.addWidget(title_lbl)
-        hdr_row.addStretch()
+            title_lbl = QLabel(role_title)
+            title_lbl.setObjectName(f"{base_name}Title")
+            hdr_row.addWidget(title_lbl)
+            hdr_row.addStretch()
 
-        copy_btn = QPushButton("Copy")
-        copy_btn.setObjectName("secondaryButton")
-        copy_btn.setFixedHeight(22)
-        copy_btn.setFixedWidth(50)
-        copy_btn.setCursor(Qt.PointingHandCursor)
-        copy_btn.clicked.connect(lambda: self._copy_text(message))
-        hdr_row.addWidget(copy_btn)
+            copy_btn = QPushButton("Copy")
+            copy_btn.setObjectName("secondaryButton")
+            copy_btn.setFixedHeight(24)
+            copy_btn.setMinimumWidth(56)
+            copy_btn.setCursor(Qt.PointingHandCursor)
+            copy_btn.clicked.connect(lambda: self._copy_text(message))
+            hdr_row.addWidget(copy_btn)
 
-        layout.addLayout(hdr_row)
+            layout.addLayout(hdr_row)
 
-        body = QLabel(message)
-        body.setObjectName(f"{base_name}Text")
-        body.setTextFormat(Qt.PlainText)
-        body.setWordWrap(True)
-        body.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        layout.addWidget(body)
+            body = QLabel(message)
+            body.setObjectName(f"{base_name}Text")
+            body.setTextFormat(Qt.MarkdownText)
+            body.setWordWrap(True)
+            body.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            layout.addWidget(body)
 
-        timestamp = QLabel(datetime.now().strftime("%H:%M:%S"))
-        timestamp.setObjectName("messageMeta")
-        timestamp.setAlignment(Qt.AlignRight)
-        layout.addWidget(timestamp)
+            timestamp = QLabel(datetime.now().strftime("%H:%M:%S"))
+            timestamp.setObjectName("messageMeta")
+            timestamp.setAlignment(Qt.AlignRight)
+            layout.addWidget(timestamp)
 
     def _copy_text(self, text: str) -> None:
         clipboard = QGuiApplication.clipboard()
@@ -286,7 +301,7 @@ class MessageBubble(QFrame):
 
 
 class ToolResultCard(QFrame):
-    """Structured card for displaying completed tool operations."""
+    """Structured technical card for displaying completed tool operations."""
 
     def __init__(
         self,
@@ -298,7 +313,7 @@ class ToolResultCard(QFrame):
         self.setMaximumWidth(760)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setContentsMargins(18, 14, 18, 14)
         layout.setSpacing(10)
 
         title_label = QLabel(title)
@@ -332,7 +347,7 @@ class ToolResultCard(QFrame):
                 copy_btn = QPushButton("Copy")
                 copy_btn.setObjectName("secondaryButton")
                 copy_btn.setFixedHeight(22)
-                copy_btn.setFixedWidth(50)
+                copy_btn.setFixedWidth(52)
                 copy_btn.setCursor(Qt.PointingHandCursor)
                 copy_btn.clicked.connect(lambda checked=False, t=value: self._copy_text(t))
                 val_row.addWidget(copy_btn)
@@ -354,6 +369,8 @@ class ToolResultCard(QFrame):
 
 class HomePage(QWidget):
     """AI assistant chat workspace."""
+
+    busy_state_changed = Signal(bool)
 
     SUGGESTIONS = (
         "Generate a 256-bit AES key",
@@ -377,10 +394,10 @@ class HomePage(QWidget):
 
     def _build_layout(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(40, 32, 40, 36)
-        layout.setSpacing(16)
+        layout.setContentsMargins(40, 32, 40, 24)
+        layout.setSpacing(14)
 
-        # Header with Clear Conversation action
+        # Header with + New chat action
         header_row = QHBoxLayout()
         header_row.setSpacing(16)
 
@@ -394,12 +411,13 @@ class HomePage(QWidget):
         header_text.addWidget(subtitle)
         header_row.addLayout(header_text, stretch=1)
 
-        self.clear_btn = QPushButton("Clear Conversation")
-        self.clear_btn.setObjectName("secondaryButton")
-        self.clear_btn.setCursor(Qt.PointingHandCursor)
-        self.clear_btn.setFixedHeight(34)
-        self.clear_btn.clicked.connect(self._clear_conversation)
-        header_row.addWidget(self.clear_btn)
+        self.new_chat_btn = QPushButton("+ New chat")
+        self.new_chat_btn.setObjectName("newChatButton")
+        self.new_chat_btn.setCursor(Qt.PointingHandCursor)
+        self.new_chat_btn.setFixedHeight(34)
+        self.new_chat_btn.clicked.connect(self._clear_conversation)
+        self.clear_btn = self.new_chat_btn  # Compatibility alias
+        header_row.addWidget(self.new_chat_btn)
 
         layout.addLayout(header_row)
 
@@ -420,34 +438,55 @@ class HomePage(QWidget):
 
         suggestions = self._create_suggestions()
 
-        # Input Box
+        # Input Box Panel
         input_panel = QFrame()
         input_panel.setObjectName("chatInputPanel")
-        input_layout = QHBoxLayout(input_panel)
+        input_layout = QVBoxLayout(input_panel)
         input_layout.setContentsMargins(14, 12, 14, 12)
-        input_layout.setSpacing(12)
+        input_layout.setSpacing(10)
 
         self.input_edit = ChatInput()
         self.input_edit.setObjectName("chatInput")
-        self.input_edit.setPlaceholderText(
-            "Ask CipherAI anything or request a crypto operation..."
-        )
-        self.input_edit.setFixedHeight(68)
+        self.input_edit.setPlaceholderText("How can I help you today?")
+        self.input_edit.setFixedHeight(54)
         self.input_edit.send_requested.connect(self._send_message)
+
+        # Bottom action row in chat bar with Pause and Send buttons
+        action_row = QHBoxLayout()
+        action_row.setContentsMargins(0, 0, 0, 0)
+        action_row.setSpacing(8)
+        action_row.addStretch()
+
+        self.pause_button = QPushButton("⏸  Pause")
+        self.pause_button.setObjectName("pauseButton")
+        self.pause_button.setCursor(Qt.PointingHandCursor)
+        self.pause_button.setFixedHeight(32)
+        self.pause_button.setEnabled(False)
+        self.pause_button.clicked.connect(self._pause_request)
 
         self.send_button = QPushButton("Send")
         self.send_button.setObjectName("primaryButton")
         self.send_button.setCursor(Qt.PointingHandCursor)
-        self.send_button.setFixedWidth(100)
-        self.send_button.setFixedHeight(44)
+        self.send_button.setFixedHeight(32)
+        self.send_button.setMinimumWidth(80)
         self.send_button.clicked.connect(self._send_message)
 
-        input_layout.addWidget(self.input_edit, stretch=1)
-        input_layout.addWidget(self.send_button, alignment=Qt.AlignBottom)
+        action_row.addWidget(self.pause_button)
+        action_row.addWidget(self.send_button)
+
+        input_layout.addWidget(self.input_edit)
+        input_layout.addLayout(action_row)
+
+        self.disclaimer_lbl = QLabel(
+            "CipherAI can make mistakes. Double-check important operations."
+        )
+        self.disclaimer_lbl.setObjectName("chatDisclaimer")
+        self.disclaimer_lbl.setAlignment(Qt.AlignCenter)
 
         layout.addWidget(self.chat_scroll, stretch=1)
         layout.addWidget(suggestions)
         layout.addWidget(input_panel)
+        layout.addWidget(self.disclaimer_lbl)
 
     def _create_suggestions(self) -> QWidget:
         scroll_area = QScrollArea()
@@ -563,7 +602,7 @@ class HomePage(QWidget):
     def _append_typing_indicator(self) -> None:
         self._append_message(
             "assistant",
-            "CipherAI is analyzing your request and processing...",
+            "Thinking...",
             object_name="thinkingMessage",
         )
 
@@ -587,7 +626,7 @@ class HomePage(QWidget):
         }
         fallback = f"{operation.replace('_', ' ').title()} Complete"
         summary = operation_titles.get(operation, fallback)
-        return f"{service.title()} • {summary}"
+        return f"✓  {service.title()} • {summary}"
 
     def _build_tool_details(
         self,
@@ -701,11 +740,31 @@ class HomePage(QWidget):
 
         QTimer.singleShot(0, _do_scroll)
 
+    def _pause_request(self) -> None:
+        if not self._is_busy:
+            return
+        if self._worker:
+            self._worker.is_cancelled = True
+        self._remove_thinking_message()
+        self._append_message(
+            "assistant",
+            "⏸  Request paused by operator. Execution halted.",
+            object_name="pausedMessage",
+            title="CipherAI System",
+        )
+        if self._thread and self._thread.isRunning():
+            self._thread.quit()
+        self._cleanup_worker_thread()
+
     def _set_busy(self, busy: bool) -> None:
         self._is_busy = busy
+        self.busy_state_changed.emit(busy)
         self.input_edit.setDisabled(busy)
+        self.pause_button.setEnabled(busy)
+        self.pause_button.setVisible(True)
+        self.send_button.setVisible(True)
         self.send_button.setDisabled(busy)
-        self.send_button.setText("Processing..." if busy else "Send")
+        self.send_button.setText("Sending..." if busy else "Send")
         for button in self.suggestion_buttons:
             button.setDisabled(busy)
 

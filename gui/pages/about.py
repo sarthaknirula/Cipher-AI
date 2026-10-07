@@ -2,7 +2,6 @@
 
 from pathlib import Path
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -12,10 +11,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from gui.components import CyberCard, PageHeader, StatusBadge
+from gui.components import (
+    CyberCard,
+    PageHeader,
+    StatusBadge,
+    create_cipher_shield_pixmap,
+)
 from gui.theme import DARK_THEME, ThemeName, get_about_stylesheet
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 class AboutPage(QWidget):
@@ -47,8 +49,8 @@ class AboutPage(QWidget):
         # Header
         header = PageHeader(
             "About CipherAI",
-            "AI-assisted cryptographic workstation.",
-            badge_text="v2.0",
+            "Next-generation AI-powered cryptographic workstation.",
+            badge_text="V2.0 ENTERPRISE",
             badge_status="info",
         )
         layout.addWidget(header)
@@ -56,43 +58,22 @@ class AboutPage(QWidget):
         # Hero Brand Banner
         hero = QFrame()
         hero.setObjectName("aboutHero")
-        hero_layout = QHBoxLayout(hero)
-        hero_layout.setContentsMargins(28, 24, 28, 24)
-        hero_layout.setSpacing(20)
+        hero_layout = QVBoxLayout(hero)
+        hero_layout.setContentsMargins(22, 18, 22, 18)
+        hero_layout.setSpacing(6)
 
-        logo_path = PROJECT_ROOT / "assets" / "logo" / "logo.png"
-        logo_label = QLabel()
-        logo_label.setFixedSize(54, 54)
-        if logo_path.exists():
-            pixmap = QPixmap(str(logo_path)).scaled(
-                54,
-                54,
-                Qt.KeepAspectRatio,
-                Qt.SmoothTransformation,
-            )
-            logo_label.setPixmap(pixmap)
-        else:
-            logo_label.setText("C")
-            logo_label.setObjectName("logoFallback")
-            logo_label.setAlignment(Qt.AlignCenter)
-
-        hero_text = QVBoxLayout()
-        hero_text.setSpacing(4)
         title = QLabel("CipherAI Cryptographic Suite")
         title.setObjectName("heroTitle")
 
         desc = QLabel(
-            "CipherAI pairs cryptographic primitives with natural-language AI "
-            "reasoning to streamline file encryption, key management, and security workflows."
+            "CipherAI pairs industry-standard cryptographic primitives with natural-language AI "
+            "reasoning to streamline encryption, key management, and cryptographic workflows."
         )
         desc.setObjectName("heroSub")
         desc.setWordWrap(True)
 
-        hero_text.addWidget(title)
-        hero_text.addWidget(desc)
-
-        hero_layout.addWidget(logo_label)
-        hero_layout.addLayout(hero_text, stretch=1)
+        hero_layout.addWidget(title)
+        hero_layout.addWidget(desc)
         layout.addWidget(hero)
 
         # Card 1: Architectural Pipeline
@@ -105,20 +86,20 @@ class AboutPage(QWidget):
 
         pipe_desc = QLabel(
             "CipherAI utilizes an asynchronous QThread worker architecture to ensure the GUI remains fluid "
-            "during cryptographic operations and AI completions:\n\n"
-            "   GUI Layer (PySide6 / Qt)\n"
-            "      |  (Dispatched via QThread worker)\n"
-            "   AI Service (Google Gemini client with session memory)\n"
-            "      |  (Structured JSON contract)\n"
-            "   AI Parser (Strict schema validation & intent routing)\n"
-            "      |\n"
-            "   AI Dispatcher (Safe parameter binding & validation)\n"
-            "      |\n"
-            "   Tool Layer (AES, RSA, Double DES, Triple DES Adapters)\n"
-            "      |\n"
-            "   Cryptographic Services (Hazmat OpenSSL primitives)\n"
-            "      |\n"
-            "   File & Validation Layer (Atomic file writes & verification)"
+            "during complex cryptographic operations and AI reasoning:\n\n"
+            "  GUI Layer (PySide6 / Qt)\n"
+            "    ↓ (Dispatched via QThread worker)\n"
+            "  AI Service (Google Gemini client with session memory)\n"
+            "    ↓ (Structured JSON contract)\n"
+            "  AI Parser (Strict schema validation & intent routing)\n"
+            "    ↓\n"
+            "  AI Dispatcher (Safe parameter binding & validation)\n"
+            "    ↓\n"
+            "  Tool Layer (AES, RSA, Double DES, Triple DES Adapters)\n"
+            "    ↓\n"
+            "  Cryptographic Services (Hazmat OpenSSL primitives)\n"
+            "    ↓\n"
+            "  File & Validation Layer (Atomic file writes & verification)"
         )
         pipe_desc.setObjectName("archCodeText")
         pipe_desc.setWordWrap(True)
@@ -128,7 +109,7 @@ class AboutPage(QWidget):
 
         # Card 2: Algorithms & Standards
         algo_card = CyberCard(
-            "Cryptographic Algorithms & Standards",
+            "Cryptographic Algorithms & Standards Profile",
             "Specifications and security profiles implemented within the suite.",
         )
         algo_layout = QVBoxLayout()
@@ -183,6 +164,9 @@ class AboutPage(QWidget):
 
     def apply_theme(self, theme: ThemeName) -> None:
         self._theme = theme
+        is_dark = theme == DARK_THEME
+        if hasattr(self, "logo_label"):
+            self.logo_label.setPixmap(create_cipher_shield_pixmap(54, is_dark=is_dark))
         self._apply_styles()
 
     def _apply_styles(self) -> None:

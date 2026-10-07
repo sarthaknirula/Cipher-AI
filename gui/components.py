@@ -1,7 +1,21 @@
-"""Reusable UI components for CipherAI."""
+"""Reusable UI components for CipherAI cybersecurity workstation."""
 
+import os
+import subprocess
+import sys
 from pathlib import Path
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QGuiApplication,
+    QIcon,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+    QPolygonF,
+)
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFileDialog,
@@ -18,13 +32,70 @@ from PySide6.QtWidgets import (
 from gui.theme import DARK_THEME, ThemeName, get_palette
 
 
+def create_cipher_shield_pixmap(size: int = 32, is_dark: bool = True) -> QPixmap:
+    """Render a self-contained cybersecurity shield emblem in memory without external asset files."""
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.transparent)
+
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing, True)
+    painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+
+    scale = size / 32.0
+
+    # Shield outer boundary
+    shield_path = QPainterPath()
+    shield_path.moveTo(16.0 * scale, 2.0 * scale)
+    shield_path.lineTo(28.0 * scale, 6.0 * scale)
+    shield_path.quadTo(28.0 * scale, 21.0 * scale, 16.0 * scale, 29.5 * scale)
+    shield_path.quadTo(4.0 * scale, 21.0 * scale, 4.0 * scale, 6.0 * scale)
+    shield_path.closeSubpath()
+
+    # Outer shield fill & stroke
+    shield_color = QColor("#0284C7" if is_dark else "#0369A1")
+    shield_fill = QColor("#0E2238" if is_dark else "#E0F2FE")
+    painter.setBrush(QBrush(shield_fill))
+    painter.setPen(QPen(shield_color, 1.8 * scale))
+    painter.drawPath(shield_path)
+
+    # Inner lock / cipher keyhole
+    lock_color = QColor("#38BDF8" if is_dark else "#0284C7")
+    painter.setBrush(QBrush(lock_color))
+    painter.setPen(Qt.NoPen)
+
+    # Keyhole circular top
+    painter.drawEllipse(
+        QRectF(13.2 * scale, 10.5 * scale, 5.6 * scale, 5.6 * scale)
+    )
+
+    # Keyhole trapezoid stem
+    stem_path = QPainterPath()
+    stem_path.moveTo(14.2 * scale, 14.5 * scale)
+    stem_path.lineTo(17.8 * scale, 14.5 * scale)
+    stem_path.lineTo(18.6 * scale, 21.0 * scale)
+    stem_path.lineTo(13.4 * scale, 21.0 * scale)
+    stem_path.closeSubpath()
+    painter.drawPath(stem_path)
+
+    painter.end()
+    return pixmap
+
+
+def create_app_icon() -> QIcon:
+    """Create a high-resolution multi-size application icon completely in-memory."""
+    icon = QIcon()
+    for s in (16, 24, 32, 48, 64, 128):
+        icon.addPixmap(create_cipher_shield_pixmap(s, is_dark=True))
+    return icon
+
+
 class StatusBadge(QFrame):
-    """Clean status pill badge without emojis."""
+    """Clean technical status badge with glowing state dot."""
 
     def __init__(
         self,
         text: str,
-        status: str = "success",  # "success", "warning", "info", "danger"
+        status: str = "success",  # "success", "warning", "info", "danger", "neutral"
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -36,6 +107,7 @@ class StatusBadge(QFrame):
             "warning": ("#F59E0B", "rgba(245, 158, 11, 0.12)"),
             "info": ("#0EA5E9", "rgba(14, 165, 233, 0.12)"),
             "danger": ("#EF4444", "rgba(239, 68, 68, 0.12)"),
+            "neutral": ("#94A3B8", "rgba(148, 163, 184, 0.12)"),
         }
         color, bg = colors.get(status, colors["info"])
 
@@ -66,6 +138,32 @@ class StatusBadge(QFrame):
             }}
             """
         )
+
+
+class SpecPill(QFrame):
+    """Compact technical specification pill (e.g., Mode: CBC, Block: 128-bit)."""
+
+    def __init__(
+        self,
+        key: str,
+        value: str,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName("specPill")
+        self.setFixedHeight(26)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 0, 8, 0)
+        layout.setSpacing(6)
+
+        k_lbl = QLabel(key.upper())
+        k_lbl.setObjectName("specPillKey")
+        v_lbl = QLabel(value)
+        v_lbl.setObjectName("specPillVal")
+
+        layout.addWidget(k_lbl)
+        layout.addWidget(v_lbl)
 
 
 class PageHeader(QWidget):
@@ -111,7 +209,7 @@ class PageHeader(QWidget):
 
 
 class CyberCard(QFrame):
-    """Rounded card container with title, subtitle, and content area."""
+    """Technical card container with title, subtitle, and structured content area."""
 
     def __init__(
         self,
@@ -123,7 +221,7 @@ class CyberCard(QFrame):
         self.setObjectName("cyberCard")
 
         self.card_layout = QVBoxLayout(self)
-        self.card_layout.setContentsMargins(20, 18, 20, 18)
+        self.card_layout.setContentsMargins(22, 18, 22, 18)
         self.card_layout.setSpacing(14)
 
         header_row = QHBoxLayout()
@@ -152,7 +250,7 @@ class CyberCard(QFrame):
 
 
 class PathPickerRow(QWidget):
-    """File or folder selection input with inline browse button."""
+    """File or folder selection input with clear indication of required/optional status."""
 
     path_changed = Signal(str)
 
@@ -162,37 +260,59 @@ class PathPickerRow(QWidget):
         placeholder: str,
         is_folder: bool = False,
         file_filter: str = "All Files (*.*)",
+        required: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.is_folder = is_folder
         self.file_filter = file_filter
+        self.required = required
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
 
+        label_row = QHBoxLayout()
+        label_row.setSpacing(6)
+
         lbl = QLabel(label)
         lbl.setObjectName("fieldLabel")
-        layout.addWidget(lbl)
+        label_row.addWidget(lbl)
+        label_row.addStretch()
+
+        layout.addLayout(label_row)
 
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(10)
+        row.setSpacing(8)
 
         self.line_edit = QLineEdit()
         self.line_edit.setPlaceholderText(placeholder)
-        self.line_edit.textChanged.connect(self.path_changed)
+        self.line_edit.textChanged.connect(self._on_text_changed)
         row.addWidget(self.line_edit, stretch=1)
+
+        self.clear_btn = QPushButton("✕")
+        self.clear_btn.setObjectName("secondaryButton")
+        self.clear_btn.setToolTip("Clear Path")
+        self.clear_btn.setFixedSize(28, 34)
+        self.clear_btn.setCursor(Qt.PointingHandCursor)
+        self.clear_btn.clicked.connect(self.clear)
+        self.clear_btn.hide()
+        row.addWidget(self.clear_btn)
 
         self.browse_btn = QPushButton("Browse")
         self.browse_btn.setObjectName("secondaryButton")
         self.browse_btn.setFixedWidth(84)
+        self.browse_btn.setFixedHeight(34)
         self.browse_btn.setCursor(Qt.PointingHandCursor)
         self.browse_btn.clicked.connect(self._browse)
         row.addWidget(self.browse_btn)
 
         layout.addLayout(row)
+
+    def _on_text_changed(self, text: str) -> None:
+        self.clear_btn.setVisible(bool(text.strip()))
+        self.path_changed.emit(text)
 
     def _browse(self) -> None:
         if self.is_folder:
@@ -221,7 +341,7 @@ class PathPickerRow(QWidget):
 
 
 class SegmentedSelector(QWidget):
-    """Segmented toggle button group."""
+    """Segmented toggle button group for discrete technical settings."""
 
     selection_changed = Signal(str)
 
@@ -245,7 +365,7 @@ class SegmentedSelector(QWidget):
             btn.setCheckable(True)
             btn.setCursor(Qt.PointingHandCursor)
             btn.setFixedHeight(32)
-            btn.setMinimumWidth(76)
+            btn.setMinimumWidth(80)
             if index == default_index:
                 btn.setChecked(True)
 
@@ -305,7 +425,7 @@ class SegmentedSelector(QWidget):
 
 
 class EmptyState(QFrame):
-    """Clean empty state widget without noisy emojis."""
+    """Technical empty state widget without external icons."""
 
     def __init__(
         self,
@@ -319,9 +439,16 @@ class EmptyState(QFrame):
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(28, 32, 28, 32)
-        layout.setSpacing(8)
+        layout.setContentsMargins(28, 36, 28, 36)
+        layout.setSpacing(10)
         layout.setAlignment(Qt.AlignCenter)
+
+        glyph_lbl = QLabel("◈")
+        glyph_lbl.setStyleSheet(
+            "font-size: 26px; color: #0284C7; font-weight: 700;"
+        )
+        glyph_lbl.setAlignment(Qt.AlignCenter)
+        layout.addWidget(glyph_lbl)
 
         title_lbl = QLabel(title)
         title_lbl.setObjectName("emptyTitle")

@@ -24,6 +24,7 @@ from gui.components import (
     PageHeader,
     PathPickerRow,
     SegmentedSelector,
+    SpecPill,
 )
 from gui.dialogs import show_error, show_info, show_success, show_warning
 from gui.theme import DARK_THEME, ThemeName, get_workspace_stylesheet
@@ -60,12 +61,22 @@ class RSAPage(QWidget):
 
         # Header
         header = PageHeader(
-            "RSA Workspace",
-            "Asymmetric Key Cryptography (RSA-OAEP with SHA-256 padding).",
+            "RSA Asymmetric Workspace",
+            "Public-Key Cryptography (RSA-OAEP padding with SHA-256 and MGF1 digest).",
             badge_text="RSA-4096 Engine Active",
             badge_status="success",
         )
         layout.addWidget(header)
+
+        # Technical Specifications Bar
+        spec_row = QHBoxLayout()
+        spec_row.setSpacing(10)
+        spec_row.addWidget(SpecPill("Standard", "PKCS#1 v2.2"))
+        spec_row.addWidget(SpecPill("Padding", "OAEP / SHA-256"))
+        spec_row.addWidget(SpecPill("Mask Function", "MGF1 (SHA-256)"))
+        spec_row.addWidget(SpecPill("Public Exponent", "e = 65537"))
+        spec_row.addStretch()
+        layout.addLayout(spec_row)
 
         # Card 1: Key Pair Generation
         key_gen_card = CyberCard(
@@ -75,21 +86,30 @@ class RSAPage(QWidget):
         key_gen_layout = QVBoxLayout()
         key_gen_layout.setSpacing(14)
 
-        # Key Size Selector
-        size_lbl = QLabel("Key Size (bits)")
-        size_lbl.setStyleSheet("font-size: 13px; font-weight: 600; color: #94A3B8;")
-        self.key_size_selector = SegmentedSelector(["2048", "3072", "4096"], default_index=2)
+        # Top inputs row: Key Size on left, Save Folder on right
+        top_inputs_row = QHBoxLayout()
+        top_inputs_row.setSpacing(20)
 
-        key_gen_layout.addWidget(size_lbl)
-        key_gen_layout.addWidget(self.key_size_selector)
+        # Key Size Selector
+        size_col = QVBoxLayout()
+        size_col.setSpacing(6)
+        size_lbl = QLabel("Key Size (bits)")
+        size_lbl.setObjectName("fieldLabel")
+        self.key_size_selector = SegmentedSelector(["2048", "3072", "4096"], default_index=2)
+        size_col.addWidget(size_lbl)
+        size_col.addWidget(self.key_size_selector)
 
         # Save Directory
         self.key_save_folder = PathPickerRow(
             "Save Folder (Optional)",
             "Leave blank for default storage/keys location",
             is_folder=True,
+            required=False,
         )
-        key_gen_layout.addWidget(self.key_save_folder)
+
+        top_inputs_row.addLayout(size_col)
+        top_inputs_row.addWidget(self.key_save_folder, stretch=1)
+        key_gen_layout.addLayout(top_inputs_row)
 
         # Action Button
         gen_btn_row = QHBoxLayout()
@@ -113,7 +133,7 @@ class RSAPage(QWidget):
         # Card 2: File Encryption
         enc_card = CyberCard(
             "File Encryption",
-            "Encrypt small documents or payloads using the recipient's RSA public key.",
+            "Encrypt payload or file using the recipient's RSA public key.",
         )
         enc_layout = QVBoxLayout()
         enc_layout.setSpacing(14)
@@ -122,15 +142,18 @@ class RSAPage(QWidget):
             "RSA Public Key (*.pem)",
             "Select recipient public key file",
             file_filter="PEM Keys (*.pem);;All Files (*.*)",
+            required=True,
         )
         self.enc_input_picker = PathPickerRow(
             "Input File to Encrypt",
             "Select plaintext file to encrypt",
+            required=True,
         )
         self.enc_output_picker = PathPickerRow(
-            "Output Directory (Optional)",
+            "Output Directory",
             "Leave blank for default storage/encrypted location",
             is_folder=True,
+            required=False,
         )
 
         enc_layout.addWidget(self.enc_pubkey_picker)
@@ -139,7 +162,7 @@ class RSAPage(QWidget):
 
         enc_btn_row = QHBoxLayout()
         enc_btn_row.addStretch()
-        self.enc_btn = QPushButton("Encrypt File")
+        self.enc_btn = QPushButton("🔒 Encrypt File")
         self.enc_btn.setObjectName("primaryButton")
         self.enc_btn.setCursor(Qt.PointingHandCursor)
         self.enc_btn.setFixedHeight(36)
@@ -148,7 +171,6 @@ class RSAPage(QWidget):
         enc_layout.addLayout(enc_btn_row)
 
         enc_card.add_layout(enc_layout)
-        layout.addWidget(enc_card)
 
         # Card 3: File Decryption
         dec_card = CyberCard(
@@ -162,16 +184,19 @@ class RSAPage(QWidget):
             "RSA Private Key (*.pem)",
             "Select your private key file",
             file_filter="PEM Keys (*.pem);;All Files (*.*)",
+            required=True,
         )
         self.dec_input_picker = PathPickerRow(
             "Encrypted Input File (*.enc)",
             "Select ciphertext file to decrypt",
             file_filter="Encrypted Files (*.enc);;All Files (*.*)",
+            required=True,
         )
         self.dec_output_picker = PathPickerRow(
             "Output Directory (Optional)",
-            "Leave blank for default storage/decrypted location",
+            "Leave blank for default storage/decrypted directory",
             is_folder=True,
+            required=False,
         )
 
         dec_layout.addWidget(self.dec_privkey_picker)
@@ -180,7 +205,7 @@ class RSAPage(QWidget):
 
         dec_btn_row = QHBoxLayout()
         dec_btn_row.addStretch()
-        self.dec_btn = QPushButton("Decrypt File")
+        self.dec_btn = QPushButton("🔓 Decrypt File")
         self.dec_btn.setObjectName("primaryButton")
         self.dec_btn.setCursor(Qt.PointingHandCursor)
         self.dec_btn.setFixedHeight(36)
@@ -189,7 +214,13 @@ class RSAPage(QWidget):
         dec_layout.addLayout(dec_btn_row)
 
         dec_card.add_layout(dec_layout)
-        layout.addWidget(dec_card)
+
+        # 2-column side-by-side layout matching reference design
+        ops_row = QHBoxLayout()
+        ops_row.setSpacing(16)
+        ops_row.addWidget(enc_card, stretch=1)
+        ops_row.addWidget(dec_card, stretch=1)
+        layout.addLayout(ops_row)
 
         scroll.setWidget(content)
         main_layout.addWidget(scroll)
@@ -198,21 +229,23 @@ class RSAPage(QWidget):
         frame = QFrame()
         frame.setObjectName("pathResultFrame")
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(8)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(10)
 
         # Public Key Row
         pub_row = QHBoxLayout()
+        pub_row.setSpacing(10)
         pub_lbl = QLabel("Public Key:")
         pub_lbl.setObjectName("pathResultLabel")
-        pub_lbl.setFixedWidth(80)
+        pub_lbl.setFixedWidth(84)
         frame.pub_path = QLabel("")
         frame.pub_path.setObjectName("pathResultText")
         frame.pub_path.setTextInteractionFlags(Qt.TextSelectableByMouse)
         pub_copy = QPushButton("Copy")
         pub_copy.setObjectName("secondaryButton")
-        pub_copy.setFixedHeight(24)
-        pub_copy.setFixedWidth(54)
+        pub_copy.setFixedHeight(26)
+        pub_copy.setFixedWidth(60)
+        pub_copy.setCursor(Qt.PointingHandCursor)
         pub_copy.clicked.connect(lambda: self._copy_clipboard(frame.pub_path.text()))
 
         pub_row.addWidget(pub_lbl)
@@ -222,19 +255,18 @@ class RSAPage(QWidget):
 
         # Private Key Row
         priv_row = QHBoxLayout()
+        priv_row.setSpacing(10)
         priv_lbl = QLabel("Private Key:")
         priv_lbl.setObjectName("pathResultLabel")
-        priv_lbl.setFixedWidth(80)
+        priv_lbl.setFixedWidth(84)
         frame.priv_path = QLabel("")
         frame.priv_path.setObjectName("pathResultText")
         frame.priv_path.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        frame.priv_path.setStyleSheet(
-            "font-family: 'Consolas', monospace; font-size: 12px; color: #F8FAFC;"
-        )
         priv_copy = QPushButton("Copy")
         priv_copy.setObjectName("secondaryButton")
-        priv_copy.setFixedHeight(24)
-        priv_copy.setFixedWidth(54)
+        priv_copy.setFixedHeight(26)
+        priv_copy.setFixedWidth(60)
+        priv_copy.setCursor(Qt.PointingHandCursor)
         priv_copy.clicked.connect(lambda: self._copy_clipboard(frame.priv_path.text()))
 
         priv_row.addWidget(priv_lbl)
@@ -247,7 +279,8 @@ class RSAPage(QWidget):
         bottom_row.addStretch()
         open_folder_btn = QPushButton("Open Containing Folder")
         open_folder_btn.setObjectName("secondaryButton")
-        open_folder_btn.setFixedHeight(26)
+        open_folder_btn.setFixedHeight(28)
+        open_folder_btn.setCursor(Qt.PointingHandCursor)
         open_folder_btn.clicked.connect(
             lambda: self._open_folder(frame.pub_path.text())
         )
@@ -291,7 +324,7 @@ class RSAPage(QWidget):
             self.key_results_frame.priv_path.setText(priv_str)
             self.key_results_frame.show()
 
-            # Pre-fill for user
+            # Pre-fill for user convenience
             self.enc_pubkey_picker.set_text(pub_str)
             self.dec_privkey_picker.set_text(priv_str)
 

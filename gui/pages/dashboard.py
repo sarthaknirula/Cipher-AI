@@ -1,4 +1,4 @@
-"""Executive dashboard for CipherAI."""
+"""Executive dashboard for CipherAI cybersecurity workstation."""
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -22,14 +22,15 @@ from gui.theme import DARK_THEME, ThemeName, get_palette
 
 
 class StatCard(QFrame):
-    """Metric card showing system component status."""
+    """Technical engine status card displaying verified runtime capabilities."""
 
     def __init__(
         self,
         title: str,
         value: str,
         sub: str,
-        status: str = "success",
+        badge_text: str | None = None,
+        badge_status: str = "success",
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -48,8 +49,10 @@ class StatCard(QFrame):
         header_row.addWidget(lbl)
         header_row.addStretch()
 
-        badge = StatusBadge("ACTIVE", status)
-        header_row.addWidget(badge)
+        if badge_text:
+            badge = StatusBadge(badge_text, badge_status)
+            header_row.addWidget(badge)
+
         layout.addLayout(header_row)
 
         val_lbl = QLabel(value)
@@ -62,7 +65,7 @@ class StatCard(QFrame):
 
 
 class QuickActionCard(QPushButton):
-    """Clickable quick action tile without emojis."""
+    """Interactive quick action tile connecting directly to operational workspaces."""
 
     def __init__(
         self,
@@ -77,7 +80,7 @@ class QuickActionCard(QPushButton):
         self.setFixedHeight(78)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setContentsMargins(16, 12, 16, 12)
         layout.setSpacing(12)
 
         tag_lbl = QLabel(tag)
@@ -100,9 +103,14 @@ class QuickActionCard(QPushButton):
         text_col.addWidget(desc_lbl)
         layout.addLayout(text_col, stretch=1)
 
+        arrow_lbl = QLabel("→")
+        arrow_lbl.setObjectName("qaArrow")
+        arrow_lbl.setStyleSheet("color: #6B7280; font-size: 15px; font-weight: 700;")
+        layout.addWidget(arrow_lbl)
+
 
 class AlgorithmCard(QFrame):
-    """Card displaying a supported crypto algorithm with launch button."""
+    """Technical card describing a supported cryptographic algorithm with direct workspace launcher."""
 
     action_clicked = Signal(str)
 
@@ -121,7 +129,7 @@ class AlgorithmCard(QFrame):
         self.page_key = page_key
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setContentsMargins(20, 18, 20, 18)
         layout.setSpacing(10)
 
         header_row = QHBoxLayout()
@@ -131,7 +139,7 @@ class AlgorithmCard(QFrame):
         header_row.addStretch()
 
         badge_status = "warning" if is_legacy else "success"
-        badge_text = "Legacy" if is_legacy else tag
+        badge_text = "Legacy / Compatibility" if is_legacy else tag
         badge = StatusBadge(badge_text, badge_status)
         header_row.addWidget(badge)
         layout.addLayout(header_row)
@@ -148,13 +156,13 @@ class AlgorithmCard(QFrame):
         btn = QPushButton(f"Open {name} Workspace")
         btn.setObjectName("secondaryButton")
         btn.setCursor(Qt.PointingHandCursor)
-        btn.setFixedHeight(32)
+        btn.setFixedHeight(34)
         btn.clicked.connect(lambda: self.action_clicked.emit(self.page_key))
         layout.addWidget(btn)
 
 
 class DashboardPage(QWidget):
-    """Central overview dashboard."""
+    """Central cybersecurity overview dashboard."""
 
     navigate_requested = Signal(str)
 
@@ -186,14 +194,14 @@ class DashboardPage(QWidget):
 
         # Header
         header = PageHeader(
-            "Dashboard",
-            "Cryptographic workspace, active engines, and session operations.",
-            badge_text="System Ready",
+            "Security Dashboard",
+            "Real-time cryptographic operations, engines, and audit logs.",
+            badge_text="Ready",
             badge_status="success",
         )
         layout.addWidget(header)
 
-        # Welcome Banner
+        # Identity & Mission Banner
         welcome_banner = QFrame()
         welcome_banner.setObjectName("welcomeBanner")
         banner_layout = QVBoxLayout(welcome_banner)
@@ -203,29 +211,34 @@ class DashboardPage(QWidget):
         hero_title = QLabel("Welcome to CipherAI")
         hero_title.setObjectName("heroTitle")
 
-        hero_sub = QLabel(
-            "Cryptographic operations and key management from a single workspace."
-        )
+        hero_sub = QLabel("AI-powered cryptographic operations from a single workspace.")
         hero_sub.setObjectName("heroSub")
+        hero_sub.setWordWrap(True)
 
         banner_layout.addWidget(hero_title)
         banner_layout.addWidget(hero_sub)
         layout.addWidget(welcome_banner)
 
-        # Status Cards Row
+        # Verified Engine Status Cards
         status_row = QHBoxLayout()
         status_row.setSpacing(12)
         status_row.addWidget(
-            StatCard("AES Engine", "AES-CBC Active", "128 / 192 / 256-bit PKCS#7")
+            StatCard("AES ENGINE", "AES-CBC + HMAC", "128 / 192 / 256-bit keys")
         )
         status_row.addWidget(
-            StatCard("RSA Engine", "RSA-OAEP Active", "2048 / 3072 / 4096-bit Keys")
+            StatCard("RSA ENGINE", "RSA-OAEP", "2048 / 3072 / 4096-bit keys")
         )
         status_row.addWidget(
-            StatCard("Legacy DES", "2DES / 3DES Ready", "Compatibility Cascade")
+            StatCard("LEGACY DES", "2DES / 3DES", "Compatibility only")
         )
         status_row.addWidget(
-            StatCard("AI Assistant", "Gemini 3.5 Flash", "Natural Language Engine")
+            StatCard(
+                "AI ASSISTANT",
+                "gemini-3.5-flash-lite",
+                "Google Gemini API",
+                badge_text="READY",
+                badge_status="success",
+            )
         )
         layout.addLayout(status_row)
 
@@ -237,26 +250,30 @@ class DashboardPage(QWidget):
         qa_grid = QGridLayout()
         qa_grid.setSpacing(10)
 
-        btn_aes_key = QuickActionCard("AES", "Generate AES Key", "Create 128, 192, or 256-bit symmetric key")
+        btn_aes_key = QuickActionCard("🔑", "Generate AES Key", "128, 192 or 256-bit symmetric key")
         btn_aes_key.clicked.connect(lambda: self.navigate_requested.emit("aes"))
 
-        btn_rsa_key = QuickActionCard("RSA", "Generate RSA Keys", "Create 2048, 3072, or 4096-bit key pair")
+        btn_rsa_key = QuickActionCard("🗝", "Generate RSA Keys", "2048 to 4096-bit public/private pair")
         btn_rsa_key.clicked.connect(lambda: self.navigate_requested.emit("rsa"))
 
-        btn_enc = QuickActionCard("ENC", "Encrypt File", "Encrypt file using AES-CBC encryption")
+        btn_enc = QuickActionCard("🔒", "Encrypt File", "Protect any file with AES-CBC")
         btn_enc.clicked.connect(lambda: self.navigate_requested.emit("aes"))
 
-        btn_dec = QuickActionCard("DEC", "Decrypt File", "Restore encrypted file to original plaintext")
+        btn_dec = QuickActionCard("🔓", "Decrypt File", "Restore an encrypted file")
         btn_dec.clicked.connect(lambda: self.navigate_requested.emit("aes"))
 
-        btn_ai = QuickActionCard("AI", "AI Assistant", "Execute crypto commands via natural language")
+        btn_ai = QuickActionCard(">_", "AI Assistant", "Run crypto tasks in plain English")
         btn_ai.clicked.connect(lambda: self.navigate_requested.emit("ai_assistant"))
+
+        btn_audit = QuickActionCard("📁", "Workspace Files", "Inspect keys and session logs")
+        btn_audit.clicked.connect(lambda: self.navigate_requested.emit("files"))
 
         qa_grid.addWidget(btn_aes_key, 0, 0)
         qa_grid.addWidget(btn_rsa_key, 0, 1)
         qa_grid.addWidget(btn_enc, 0, 2)
         qa_grid.addWidget(btn_dec, 1, 0)
         qa_grid.addWidget(btn_ai, 1, 1)
+        qa_grid.addWidget(btn_audit, 1, 2)
 
         layout.addLayout(qa_grid)
 
@@ -269,38 +286,38 @@ class DashboardPage(QWidget):
         algo_grid.setSpacing(12)
 
         card_aes = AlgorithmCard(
-            "Standard",
+            "STANDARD",
             "AES",
-            "CBC Mode • PKCS#7 Padding • 16-byte IV",
-            "Advanced Encryption Standard approved by NIST. Fast, high-assurance symmetric encryption.",
+            "CBC Mode • HMAC-SHA256 • 16-byte IV",
+            "Advanced Encryption Standard approved by NIST. Provides ultra-fast, high-assurance symmetric encryption.",
             "aes",
         )
         card_aes.action_clicked.connect(self.navigate_requested.emit)
 
         card_rsa = AlgorithmCard(
-            "Asymmetric",
+            "ASYMMETRIC",
             "RSA",
             "OAEP Padding • SHA-256 • 2048-4096 bit",
-            "Rivest-Shamir-Adleman asymmetric cryptosystem for secure key exchange and payload protection.",
+            "Rivest-Shamir-Adleman public-key cryptosystem. Provides secure key exchange and asymmetric file protection.",
             "rsa",
         )
         card_rsa.action_clicked.connect(self.navigate_requested.emit)
 
         card_ddes = AlgorithmCard(
-            "Legacy",
+            "LEGACY",
             "Double DES",
             "CBC Mode • 2 Distinct 56-bit Keys",
-            "Sequential double-pass Data Encryption Standard cascade. Maintained for backward compatibility.",
+            "Two-pass DES cascade. Compatibility only; meet-in-the-middle makes it about as secure as single DES.",
             "double_des",
             is_legacy=True,
         )
         card_ddes.action_clicked.connect(self.navigate_requested.emit)
 
         card_tdes = AlgorithmCard(
-            "Legacy",
+            "LEGACY",
             "Triple DES",
             "3DES-EDE • 3 Distinct 56-bit Keys",
-            "Triple Data Encryption Standard in Encrypt-Decrypt-Encrypt mode with three independent keys.",
+            "Triple Data Encryption Standard in Encrypt-Decrypt-Encrypt structure with 168-bit key length.",
             "triple_des",
             is_legacy=True,
         )
@@ -314,7 +331,7 @@ class DashboardPage(QWidget):
         layout.addLayout(algo_grid)
 
         # Recent Activity Section
-        recent_title = QLabel("RECENT OPERATIONS")
+        recent_title = QLabel("RECENT OPERATIONS & AUDIT")
         recent_title.setObjectName("sidebarSectionHeader")
         layout.addWidget(recent_title)
 
@@ -337,9 +354,9 @@ class DashboardPage(QWidget):
         items = self._tracker.get_recent(10)
         if not items:
             empty = EmptyState(
-                None,
-                "No Recent Activity",
-                "Operations executed during your session (key generation, encryption, decryption) will appear here.",
+                "🕒",
+                "No Recent Activity Recorded",
+                "Operations executed during this session (key generation, encryption, decryption) will appear here automatically.",
             )
             self.activity_layout.addWidget(empty)
             return
