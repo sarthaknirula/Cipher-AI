@@ -273,6 +273,9 @@ def get_app_stylesheet(theme: ThemeName) -> str:
             background-color: {colors["secondary_bg"]};
             color: {colors["secondary_text"]};
             border: 1px solid {colors["border_normal"]};
+            min-height: 0px;
+            padding: 4px 10px;
+            font-size: 12px;
         }}
         QPushButton#secondaryButton:hover {{
             background-color: {colors["secondary_hover"]};
@@ -286,11 +289,10 @@ def get_app_stylesheet(theme: ThemeName) -> str:
         QPushButton#copySymbolButton {{
             background-color: transparent;
             color: {colors["text_muted"]};
-            border: 1px solid {colors["border_subtle"]};
+            border: none;
             border-radius: 4px;
             padding: 0px;
             margin: 0px;
-            font-size: 13px;
             min-width: 24px;
             max-width: 28px;
             min-height: 24px;
@@ -298,8 +300,8 @@ def get_app_stylesheet(theme: ThemeName) -> str:
         }}
         QPushButton#copySymbolButton:hover {{
             background-color: {colors["secondary_hover"]};
+            border: 1px solid {colors["border_subtle"]};
             color: {colors["text_primary"]};
-            border-color: {colors["border_focus"]};
         }}
         QPushButton#copySymbolButton:pressed {{
             background-color: {colors["border_subtle"]};

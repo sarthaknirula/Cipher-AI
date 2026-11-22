@@ -223,7 +223,7 @@ class DashboardPage(QWidget):
         status_row = QHBoxLayout()
         status_row.setSpacing(12)
         status_row.addWidget(
-            StatCard("AES ENGINE", "AES-CBC + HMAC", "128 / 192 / 256-bit keys")
+            StatCard("AES ENGINE", "AES-CBC / GCM", "128 / 192 / 256-bit keys")
         )
         status_row.addWidget(
             StatCard("RSA ENGINE", "RSA-OAEP", "2048 / 3072 / 4096-bit keys")
@@ -256,7 +256,7 @@ class DashboardPage(QWidget):
         btn_rsa_key = QuickActionCard("🗝", "Generate RSA Keys", "2048 to 4096-bit public/private pair")
         btn_rsa_key.clicked.connect(lambda: self.navigate_requested.emit("rsa"))
 
-        btn_enc = QuickActionCard("🔒", "Encrypt File", "Protect any file with AES-CBC")
+        btn_enc = QuickActionCard("🔒", "Encrypt File", "Protect any file with AES-GCM / CBC")
         btn_enc.clicked.connect(lambda: self.navigate_requested.emit("aes"))
 
         btn_dec = QuickActionCard("🔓", "Decrypt File", "Restore an encrypted file")
@@ -288,7 +288,7 @@ class DashboardPage(QWidget):
         card_aes = AlgorithmCard(
             "STANDARD",
             "AES",
-            "CBC Mode • HMAC-SHA256 • 16-byte IV",
+            "GCM / CBC Mode • AEAD Auth • 12/16-byte IV",
             "Advanced Encryption Standard approved by NIST. Provides ultra-fast, high-assurance symmetric encryption.",
             "aes",
         )

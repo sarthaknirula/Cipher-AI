@@ -53,3 +53,27 @@ def clean_decrypted_filename(filename: str, algorithm_suffix: str = "") -> str:
         name = f"decrypted_{name}"
 
     return name
+
+
+def resolve_unique_path(path: Path) -> Path:
+    """Ensure target path does not collide with an existing file, avoiding silent overwrites.
+
+    If target exists, appends '_1', '_2', etc. before suffix.
+    Example:
+        'decrypted_report.pdf' -> 'decrypted_report_1.pdf'
+        'key1.key' -> 'key1_1.key'
+    """
+    path = Path(path)
+    if not path.exists():
+        return path
+
+    parent = path.parent
+    stem = path.stem
+    suffix = path.suffix
+
+    counter = 1
+    while True:
+        candidate = parent / f"{stem}_{counter}{suffix}"
+        if not candidate.exists():
+            return candidate
+        counter += 1

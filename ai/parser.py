@@ -10,7 +10,7 @@ class AIParser:
     ALLOWED_ACTIONS = {"chat", "tool", "clarify"}
 
     def parse(self, raw_response: str) -> dict[str, Any]:
-        """Parse and validate a raw JSON response from AIService."""
+        """Parse and validate a raw JSON response from AIService, handling markdown fences."""
         data = self._parse_json(raw_response)
 
         action = self._require_field(data, "action")
@@ -27,9 +27,10 @@ class AIParser:
         return data
 
     def _parse_json(self, raw_response: str) -> dict[str, Any]:
-        """Decode raw response text as a JSON object."""
+        """Decode raw response text as a JSON object, stripping markdown code fences if present."""
+        clean_text = self._strip_markdown_code_fences(raw_response)
         try:
-            data = json.loads(raw_response)
+            data = json.loads(clean_text)
         except json.JSONDecodeError as exc:
             raise ValueError("Invalid JSON received from AI.") from exc
 
@@ -37,6 +38,20 @@ class AIParser:
             raise ValueError("AI response must be a JSON object.")
 
         return data
+
+    @staticmethod
+    def _strip_markdown_code_fences(text: str) -> str:
+        """Strip ```json ... ``` code fences if present in the response."""
+        stripped = text.strip()
+        if stripped.startswith("```"):
+            lines = stripped.splitlines()
+            # drop opening fence line
+            lines = lines[1:]
+            # drop closing fence line if present
+            if lines and lines[-1].strip().startswith("```"):
+                lines = lines[:-1]
+            return "\n".join(lines).strip()
+        return stripped
 
     def _validate_chat(self, data: dict[str, Any]) -> None:
         """Validate a chat response."""

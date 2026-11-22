@@ -130,7 +130,7 @@ class SettingsPage(QWidget):
         sys_layout.addRow("Python Runtime", QLabel(f"Python {sys.version.split()[0]}"))
         sys_layout.addRow("GUI Framework", QLabel("PySide6 / Qt 6.11"))
         sys_layout.addRow("Cryptography Provider", QLabel("cryptography (OpenSSL Hazmat)"))
-        sys_layout.addRow("AES Specification", QLabel("AES-CBC (128/192/256-bit) with PKCS#7"))
+        sys_layout.addRow("AES Specification", QLabel("AES-GCM (AEAD) & AES-CBC (128/192/256-bit)"))
         sys_layout.addRow("RSA Specification", QLabel("RSA-OAEP (2048/3072/4096-bit) with SHA-256"))
         sys_layout.addRow("DES Specifications", QLabel("Double DES & Triple DES (3DES-EDE)"))
 

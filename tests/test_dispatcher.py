@@ -1,78 +1,76 @@
-"""Manual smoke tests for AIDispatcher."""
+"""Unit tests for AIDispatcher."""
 
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import unittest
+from unittest.mock import Mock, patch
 
 from ai.dispatcher import AIDispatcher
 
 
-def test_chat(dispatcher: AIDispatcher) -> None:
-    """Verify chat responses are returned directly."""
-    parsed_response = {
-        "action": "chat",
-        "response": "AES is a symmetric algorithm.",
-    }
+class DispatcherTests(unittest.TestCase):
+    """Verify AIDispatcher routes chat, clarify, and tool operations."""
 
-    result = dispatcher.dispatch(parsed_response)
-    if result == parsed_response["response"]:
-        print("✓ Chat dispatch successful")
+    def setUp(self) -> None:
+        self.dispatcher = AIDispatcher()
 
+    def test_chat(self) -> None:
+        """Verify chat responses are returned directly."""
+        parsed_response = {
+            "action": "chat",
+            "response": "AES is a symmetric algorithm.",
+        }
+        result = self.dispatcher.dispatch(parsed_response)
+        self.assertEqual(result, parsed_response["response"])
 
-def test_clarify(dispatcher: AIDispatcher) -> None:
-    """Verify clarification questions are returned directly."""
-    parsed_response = {
-        "action": "clarify",
-        "question": "Which algorithm would you like?",
-    }
+    def test_clarify(self) -> None:
+        """Verify clarification questions are returned directly."""
+        parsed_response = {
+            "action": "clarify",
+            "question": "Which algorithm would you like?",
+        }
+        result = self.dispatcher.dispatch(parsed_response)
+        self.assertEqual(result, parsed_response["question"])
 
-    result = dispatcher.dispatch(parsed_response)
-    if result == parsed_response["question"]:
-        print("✓ Clarify dispatch successful")
+    def test_tool_selection(self) -> None:
+        """Verify a supported tool is selected and called."""
+        parsed_response = {
+            "action": "tool",
+            "service": "AES",
+            "operation": "generate_key",
+            "reason": "User requested AES key generation.",
+            "arguments": {"key_size": 256},
+        }
 
+        mock_tool = Mock()
+        mock_tool.execute.return_value = "/mock/path/aes.key"
+        self.dispatcher.tools["AES"] = mock_tool
 
-def test_tool_selection(dispatcher: AIDispatcher) -> None:
-    """Verify a supported tool is selected and called."""
-    parsed_response = {
-        "action": "tool",
-        "service": "AES",
-        "operation": "encrypt",
-        "reason": "User requested AES encryption.",
-        "arguments": {},
-    }
+        result = self.dispatcher.dispatch(parsed_response)
+        self.assertEqual(result, "/mock/path/aes.key")
+        mock_tool.execute.assert_called_once_with("generate_key", {"key_size": 256})
 
-    try:
-        dispatcher.dispatch(parsed_response)
-    except NotImplementedError:
-        print("✓ Correct tool selected")
+    def test_unsupported_service(self) -> None:
+        """Verify unsupported services raise a readable error."""
+        parsed_response = {
+            "action": "tool",
+            "service": "BLOWFISH",
+            "operation": "encrypt",
+            "reason": "User requested unsupported encryption.",
+            "arguments": {},
+        }
 
+        with self.assertRaisesRegex(ValueError, "Unsupported service: BLOWFISH"):
+            self.dispatcher.dispatch(parsed_response)
 
-def test_unsupported_service(dispatcher: AIDispatcher) -> None:
-    """Verify unsupported services raise a readable error."""
-    parsed_response = {
-        "action": "tool",
-        "service": "BLOWFISH",
-        "operation": "encrypt",
-        "reason": "User requested unsupported encryption.",
-        "arguments": {},
-    }
+    def test_unsupported_action(self) -> None:
+        """Verify unsupported actions raise ValueError."""
+        parsed_response = {
+            "action": "unknown_action",
+            "payload": "test",
+        }
 
-    try:
-        dispatcher.dispatch(parsed_response)
-    except ValueError as exc:
-        print(f"✓ Unsupported service handled: {exc}")
-
-
-def main() -> None:
-    """Run manual dispatcher checks without contacting Gemini."""
-    dispatcher = AIDispatcher()
-
-    test_chat(dispatcher)
-    test_clarify(dispatcher)
-    test_tool_selection(dispatcher)
-    test_unsupported_service(dispatcher)
+        with self.assertRaisesRegex(ValueError, "Unsupported action: unknown_action"):
+            self.dispatcher.dispatch(parsed_response)
 
 
 if __name__ == "__main__":
-    main()
+    unittest.main()

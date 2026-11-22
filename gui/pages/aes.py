@@ -4,9 +4,10 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QThread, Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
+    QApplication,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -21,6 +22,7 @@ from PySide6.QtWidgets import (
 from crypto.aes import AESService
 from gui.activity import get_activity_tracker
 from gui.components import (
+    CryptoTaskWorker,
     CyberCard,
     PageHeader,
     PathPickerRow,
@@ -56,7 +58,7 @@ class AESPage(QWidget):
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setContentsMargins(40, 32, 40, 40)
-        layout.setSpacing(24)
+        layout.setSpacing(16)
 
         # Header
         header = PageHeader(
@@ -142,7 +144,7 @@ class AESPage(QWidget):
         mode_col.setSpacing(6)
         mode_lbl = QLabel("Cipher Mode")
         mode_lbl.setObjectName("fieldLabel")
-        self.enc_mode_selector = SegmentedSelector(["CBC (Standard)", "GCM (AEAD)"], default_index=0)
+        self.enc_mode_selector = SegmentedSelector(["GCM (AEAD)", "CBC (Standard)"], default_index=0)
         self.enc_mode_selector.selection_changed.connect(self._on_mode_changed)
         mode_col.addWidget(mode_lbl)
         mode_col.addWidget(self.enc_mode_selector)
@@ -184,8 +186,8 @@ class AESPage(QWidget):
         iv_lbl_row.addStretch()
 
         self.enc_iv_input = QLineEdit()
-        self.enc_iv_input.setPlaceholderText("Optional: Enter 16-byte hex IV (32 hex characters) or leave blank")
-        self.iv_help = QLabel("Leave empty to generate a cryptographically secure random 16-byte IV automatically.")
+        self.enc_iv_input.setPlaceholderText("Optional: Enter 12-byte hex nonce (24 hex characters) or leave blank")
+        self.iv_help = QLabel("Leave empty to generate a cryptographically secure random 12-byte nonce automatically.")
         self.iv_help.setObjectName("helperText")
         iv_col.addLayout(iv_lbl_row)
         iv_col.addWidget(self.enc_iv_input)
@@ -246,10 +248,13 @@ class AESPage(QWidget):
         dec_layout.addLayout(dec_btn_row)
 
         dec_card.add_layout(dec_layout)
+        enc_card.add_stretch()
+        dec_card.add_stretch()
 
         # 2-column side-by-side layout matching reference design
         ops_row = QHBoxLayout()
         ops_row.setSpacing(16)
+        ops_row.setAlignment(Qt.AlignmentFlag.AlignTop)
         ops_row.addWidget(enc_card, stretch=1)
         ops_row.addWidget(dec_card, stretch=1)
         layout.addLayout(ops_row)
@@ -275,8 +280,8 @@ class AESPage(QWidget):
 
         copy_btn = QPushButton("Copy Path")
         copy_btn.setObjectName("secondaryButton")
-        copy_btn.setFixedHeight(28)
-        copy_btn.setFixedWidth(84)
+        copy_btn.setFixedHeight(30)
+        copy_btn.setMinimumWidth(84)
         copy_btn.setCursor(Qt.PointingHandCursor)
         copy_btn.clicked.connect(
             lambda: self._copy_clipboard(frame.path_label.text())
@@ -285,8 +290,8 @@ class AESPage(QWidget):
 
         open_folder_btn = QPushButton("Open Folder")
         open_folder_btn.setObjectName("secondaryButton")
-        open_folder_btn.setFixedHeight(28)
-        open_folder_btn.setFixedWidth(96)
+        open_folder_btn.setFixedHeight(30)
+        open_folder_btn.setMinimumWidth(100)
         open_folder_btn.setCursor(Qt.PointingHandCursor)
         open_folder_btn.clicked.connect(
             lambda: self._open_folder(frame.path_label.text())
@@ -313,6 +318,54 @@ class AESPage(QWidget):
             else:
                 subprocess.Popen(["xdg-open", str(folder)])
 
+    def _run_task(
+        self,
+        task_fn,
+        on_success,
+        on_error=None,
+        busy_btn: QPushButton | None = None,
+        busy_text: str = "Processing...",
+    ) -> None:
+        original_text = ""
+        if busy_btn is not None:
+            original_text = busy_btn.text()
+            busy_btn.setEnabled(False)
+            busy_btn.setText(busy_text)
+
+        thread = QThread(self)
+        worker = CryptoTaskWorker(task_fn)
+        worker.moveToThread(thread)
+
+        def _cleanup() -> None:
+            if busy_btn is not None:
+                busy_btn.setEnabled(True)
+                busy_btn.setText(original_text)
+
+        def _handle_success(result) -> None:
+            _cleanup()
+            on_success(result)
+
+        def _handle_error(err_msg: str) -> None:
+            _cleanup()
+            if on_error:
+                on_error(err_msg)
+            else:
+                show_error(self, "Operation Failed", err_msg, theme=self._theme)
+
+        thread.started.connect(worker.run)
+        worker.result_ready.connect(_handle_success)
+        worker.error_occurred.connect(_handle_error)
+        worker.finished.connect(worker.deleteLater)
+        worker.finished.connect(thread.quit)
+        thread.finished.connect(thread.deleteLater)
+        thread.start()
+
+        app = QApplication.instance()
+        while thread.isRunning():
+            if app is not None:
+                app.processEvents()
+            thread.wait(10)
+
     def _generate_key(self) -> None:
         try:
             key_size = int(self.key_size_selector.current_value())
@@ -321,8 +374,10 @@ class AESPage(QWidget):
 
         save_dir = self.key_save_folder.path()
 
-        try:
-            key_path = self.service.generate_key(key_size, save_dir)
+        def _do_generate() -> Path:
+            return self.service.generate_key(key_size, save_dir)
+
+        def _on_success(key_path: Path) -> None:
             path_str = str(key_path.resolve())
 
             self.key_result_frame.path_label.setText(path_str)
@@ -346,13 +401,19 @@ class AESPage(QWidget):
                 details=path_str,
                 theme=self._theme,
             )
-        except Exception as exc:
-            show_error(
+
+        self._run_task(
+            _do_generate,
+            _on_success,
+            on_error=lambda err: show_error(
                 self,
                 "Key Generation Failed",
-                f"Unable to generate AES key: {exc}",
+                f"Unable to generate AES key: {err}",
                 theme=self._theme,
-            )
+            ),
+            busy_btn=self.gen_key_btn,
+            busy_text="Generating Key...",
+        )
 
     def _on_mode_changed(self, mode_text: str) -> None:
         if "GCM" in mode_text:
@@ -388,14 +449,16 @@ class AESPage(QWidget):
         is_gcm = "GCM" in self.enc_mode_selector.current_value()
         mode = "GCM" if is_gcm else "CBC"
 
-        try:
-            saved_path = self.service.encrypt(
+        def _do_encrypt() -> Path:
+            return self.service.encrypt(
                 key_path=key_path,
                 input_file_path=input_path,
                 output_folder=output_dir,
                 iv=iv,
                 mode=mode,
             )
+
+        def _on_success(saved_path: Path) -> None:
             path_str = str(saved_path.resolve())
 
             # Pre-fill decryption encrypted file
@@ -416,13 +479,19 @@ class AESPage(QWidget):
                 details=path_str,
                 theme=self._theme,
             )
-        except Exception as exc:
-            show_error(
+
+        self._run_task(
+            _do_encrypt,
+            _on_success,
+            on_error=lambda err: show_error(
                 self,
                 "Encryption Failed",
-                f"Failed to encrypt file: {exc}",
+                f"Failed to encrypt file: {err}",
                 theme=self._theme,
-            )
+            ),
+            busy_btn=self.enc_btn,
+            busy_text="Encrypting File...",
+        )
 
     def _decrypt_file(self) -> None:
         key_path = self.dec_key_picker.path()
@@ -447,12 +516,14 @@ class AESPage(QWidget):
 
         output_dir = self.dec_output_picker.path()
 
-        try:
-            saved_path = self.service.decrypt(
+        def _do_decrypt() -> Path:
+            return self.service.decrypt(
                 key_path=key_path,
                 input_file_path=input_path,
                 output_folder=output_dir,
             )
+
+        def _on_success(saved_path: Path) -> None:
             path_str = str(saved_path.resolve())
 
             get_activity_tracker().record(
@@ -469,13 +540,19 @@ class AESPage(QWidget):
                 details=path_str,
                 theme=self._theme,
             )
-        except Exception as exc:
-            show_error(
+
+        self._run_task(
+            _do_decrypt,
+            _on_success,
+            on_error=lambda err: show_error(
                 self,
                 "Decryption Failed",
-                f"Failed to decrypt file: {exc}",
+                f"Failed to decrypt file: {err}",
                 theme=self._theme,
-            )
+            ),
+            busy_btn=self.dec_btn,
+            busy_text="Decrypting File...",
+        )
 
     def apply_theme(self, theme: ThemeName) -> None:
         self._theme = theme

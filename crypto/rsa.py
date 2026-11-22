@@ -9,7 +9,13 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, RSAPublicKey
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from core.paths import PROJECT_ROOT, clean_decrypted_filename, ensure_directory, get_timestamped_directory
+from core.paths import (
+    PROJECT_ROOT,
+    clean_decrypted_filename,
+    ensure_directory,
+    get_timestamped_directory,
+    resolve_unique_path,
+)
 
 
 class RSAService:
@@ -127,15 +133,12 @@ class RSAService:
         return self.decrypt_file(private_key_path, encrypted_file_path, output_folder, passphrase=passphrase)
 
     def _encrypt_bytes_hybrid(self, public_key: RSAPublicKey, file_bytes: bytes) -> bytes:
-        # 1. Ephemeral AES-256 session key and 12-byte nonce
         aes_key = os.urandom(self.AES_KEY_SIZE_BYTES)
         nonce = os.urandom(self.GCM_NONCE_SIZE_BYTES)
 
-        # 2. Encrypt payload with AES-256-GCM
         aesgcm = AESGCM(aes_key)
         ciphertext = aesgcm.encrypt(nonce, file_bytes, None)
 
-        # 3. Encrypt AES key with RSA OAEP
         enc_aes_key = self._encrypt_bytes(public_key, aes_key)
         key_len = len(enc_aes_key).to_bytes(2, "big")
 
@@ -153,7 +156,6 @@ class RSAService:
         nonce = payload[nonce_start : nonce_start + self.GCM_NONCE_SIZE_BYTES]
         ciphertext = payload[nonce_start + self.GCM_NONCE_SIZE_BYTES :]
 
-        # Recover AES key and decrypt payload
         aes_key = self._decrypt_bytes(private_key, enc_aes_key)
         aesgcm = AESGCM(aes_key)
         return aesgcm.decrypt(nonce, ciphertext, None)
@@ -265,13 +267,16 @@ class RSAService:
         )
 
     def _save_key(self, file_path: Path, key_bytes: bytes) -> Path:
-        file_path.write_bytes(key_bytes)
-        return file_path
+        unique_path = resolve_unique_path(file_path)
+        unique_path.write_bytes(key_bytes)
+        return unique_path
 
     def _save_encrypted_file(self, file_path: Path, encrypted_bytes: bytes) -> Path:
-        file_path.write_bytes(encrypted_bytes)
-        return file_path
+        unique_path = resolve_unique_path(file_path)
+        unique_path.write_bytes(encrypted_bytes)
+        return unique_path
 
     def _save_decrypted_file(self, file_path: Path, decrypted_bytes: bytes) -> Path:
-        file_path.write_bytes(decrypted_bytes)
-        return file_path
+        unique_path = resolve_unique_path(file_path)
+        unique_path.write_bytes(decrypted_bytes)
+        return unique_path

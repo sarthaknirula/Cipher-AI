@@ -119,8 +119,8 @@ class CyberDialog(QDialog):
 
             copy_btn = QPushButton("Copy Details")
             copy_btn.setObjectName("secondaryButton")
-            copy_btn.setFixedHeight(26)
-            copy_btn.setFixedWidth(88)
+            copy_btn.setFixedHeight(32)
+            copy_btn.setMinimumWidth(105)
             copy_btn.setCursor(Qt.PointingHandCursor)
             copy_btn.clicked.connect(self._copy_details)
             details_header.addWidget(copy_btn)

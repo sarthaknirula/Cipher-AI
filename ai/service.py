@@ -54,6 +54,7 @@ class AIService:
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
                 temperature=self.DEFAULT_TEMPERATURE,
+                response_mime_type="application/json",
             ),
         )
 

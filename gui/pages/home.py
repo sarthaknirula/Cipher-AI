@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, QThread, Qt, QTimer, Signal
+from PySide6.QtCore import QObject, QSize, QThread, Qt, QTimer, Signal
 from PySide6.QtGui import QGuiApplication, QKeyEvent
 from PySide6.QtWidgets import (
     QFrame,
@@ -26,16 +26,38 @@ from ai.service import AIService
 from ai.session_state import SessionState, get_session_state
 from ai.tools.validation import ToolValidationClarification
 from gui.activity import get_activity_tracker
-from gui.components import PageHeader, StatusBadge
+from gui.components import (
+    PageHeader,
+    StatusBadge,
+    create_check_icon,
+    create_copy_icon,
+)
 from gui.theme import DARK_THEME, ThemeName, get_home_stylesheet
+
+ALGORITHM_DISPLAY_NAMES = {
+    "aes": "AES",
+    "rsa": "RSA",
+    "des": "DES",
+    "double_des": "Double DES",
+    "double des": "Double DES",
+    "triple_des": "Triple DES",
+    "triple des": "Triple DES",
+    "tool": "Tool",
+}
+
+
+def format_algorithm_name(name: str) -> str:
+    key = str(name).strip().lower().replace("-", "_")
+    return ALGORITHM_DISPLAY_NAMES.get(key, str(name).title())
+
 
 WELCOME_MESSAGE = (
     "CipherAI Security Copilot online.\n\n"
-    "I can assist you with cryptographic operations and analysis:\n"
-    "• Generate AES, RSA, and DES keys\n"
-    "• Encrypt and decrypt files\n"
-    "• Explain cryptographic algorithms and security standards\n"
-    "• Compare symmetric vs asymmetric encryption\n\n"
+    "I can assist you with cryptographic operations and analysis:\n\n"
+    "- Generate AES, RSA, and DES keys\n"
+    "- Encrypt and decrypt files\n"
+    "- Explain cryptographic algorithms and security standards\n"
+    "- Compare symmetric vs asymmetric encryption\n\n"
     "Type a command below or select a quick action to begin."
 )
 
@@ -156,14 +178,12 @@ class AIWorker(QObject):
             return str(result.dispatch_result)
 
         if action == "tool":
-            service = str(result.parsed_response.get("service", "Tool")).replace(
-                "_",
-                " ",
-            )
+            service_raw = str(result.parsed_response.get("service", "Tool"))
+            service = format_algorithm_name(service_raw)
             operation = str(result.parsed_response.get("operation", "operation"))
             result_text = self._format_result_value(result.dispatch_result)
             return (
-                f"{service.title()} {operation.replace('_', ' ')} completed "
+                f"{service} {operation.replace('_', ' ')} completed "
                 f"successfully. {result_text}"
             )
 
@@ -622,7 +642,8 @@ class HomePage(QWidget):
         self._append_card(ToolResultCard(title, details))
 
     def _format_tool_title(self, parsed_response: dict[str, Any]) -> str:
-        service = str(parsed_response.get("service", "Tool")).replace("_", " ")
+        service_raw = str(parsed_response.get("service", "Tool"))
+        service = format_algorithm_name(service_raw)
         operation = str(parsed_response.get("operation", "operation"))
         operation_titles = {
             "generate_key": "Key Generated Successfully",
@@ -632,7 +653,7 @@ class HomePage(QWidget):
         }
         fallback = f"{operation.replace('_', ' ').title()} Complete"
         summary = operation_titles.get(operation, fallback)
-        return f"✓  {service.title()} • {summary}"
+        return f"✓  {service} • {summary}"
 
     def _build_tool_details(
         self,

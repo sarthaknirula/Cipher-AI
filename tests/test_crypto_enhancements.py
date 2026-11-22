@@ -212,10 +212,13 @@ class CryptoEnhancementsTests(unittest.TestCase):
         self.assertEqual(card_copy_btn.text(), "📋")
 
     def test_aes_gui_mode_selector(self) -> None:
-        """AES page provides CBC and GCM mode selection."""
+        """AES page provides CBC and GCM mode selection with GCM as default."""
         page = AESPage()
         self.assertTrue(hasattr(page, "enc_mode_selector"))
-        self.assertIn("CBC", page.enc_mode_selector.current_value())
+        self.assertIn("GCM", page.enc_mode_selector.current_value())
+        # Toggle to CBC
+        page._on_mode_changed("CBC (Standard)")
+        self.assertIn("16-byte", page.enc_iv_input.placeholderText())
         # Toggle to GCM
         page._on_mode_changed("GCM (AEAD)")
         self.assertIn("12-byte", page.enc_iv_input.placeholderText())

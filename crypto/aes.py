@@ -1,4 +1,4 @@
-"""AES symmetric encryption service supporting CBC and authenticated GCM modes with streaming."""
+"""AES symmetric encryption service supporting authenticated GCM (default) and CBC modes with streaming."""
 
 import datetime
 import os
@@ -10,7 +10,13 @@ from cryptography.hazmat.primitives.ciphers import Cipher, modes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.ciphers.algorithms import AES
 
-from core.paths import PROJECT_ROOT, clean_decrypted_filename, ensure_directory, get_timestamped_directory
+from core.paths import (
+    PROJECT_ROOT,
+    clean_decrypted_filename,
+    ensure_directory,
+    get_timestamped_directory,
+    resolve_unique_path,
+)
 from core.validators import validate_iv
 
 
@@ -47,9 +53,9 @@ class AESService:
         input_file_path: Path,
         output_folder: Path | None = None,
         iv: bytes | str | None = None,
-        mode: str = "CBC",
+        mode: str = "GCM",
     ) -> Path:
-        """Encrypt a file with AES in CBC or authenticated GCM mode."""
+        """Encrypt a file with AES in authenticated GCM (default) or CBC mode."""
         key_path = Path(key_path)
         input_file_path = Path(input_file_path)
 
@@ -60,7 +66,19 @@ class AESService:
         key_bytes = self._load_key(key_path)
         encrypted_file_path = output_folder / f"{input_file_path.name}.aes.enc"
 
-        if mode.upper() == "GCM":
+        # If a 16-byte IV is passed without explicit mode override, gracefully use CBC for backward compatibility
+        chosen_mode = mode.upper()
+        if iv is not None and chosen_mode == "GCM":
+            try:
+                self._resolve_gcm_nonce(iv)
+            except ValueError:
+                try:
+                    self._resolve_iv(iv)
+                    chosen_mode = "CBC"
+                except ValueError:
+                    pass
+
+        if chosen_mode == "GCM":
             nonce = self._resolve_gcm_nonce(iv)
             file_bytes = self._read_file_bytes(input_file_path)
             encrypted_payload = self._encrypt_bytes_gcm(key_bytes, file_bytes, nonce)
@@ -71,8 +89,9 @@ class AESService:
         resolved_iv = self._resolve_iv(iv)
 
         if file_size >= self.STREAMING_THRESHOLD_BYTES:
-            self._encrypt_stream_cbc(key_bytes, resolved_iv, input_file_path, encrypted_file_path)
-            return encrypted_file_path
+            target_path = resolve_unique_path(encrypted_file_path)
+            self._encrypt_stream_cbc(key_bytes, resolved_iv, input_file_path, target_path)
+            return target_path
 
         file_bytes = self._read_file_bytes(input_file_path)
         encrypted_bytes = self._encrypt_bytes_cbc(key_bytes, file_bytes, resolved_iv)
@@ -297,13 +316,16 @@ class AESService:
         return Cipher(AES(key_bytes), modes.CBC(iv))
 
     def _save_key(self, file_path: Path, key_bytes: bytes) -> Path:
-        file_path.write_bytes(key_bytes)
-        return file_path
+        unique_path = resolve_unique_path(file_path)
+        unique_path.write_bytes(key_bytes)
+        return unique_path
 
     def _save_encrypted_file(self, file_path: Path, encrypted_bytes: bytes) -> Path:
-        file_path.write_bytes(encrypted_bytes)
-        return file_path
+        unique_path = resolve_unique_path(file_path)
+        unique_path.write_bytes(encrypted_bytes)
+        return unique_path
 
     def _save_decrypted_file(self, file_path: Path, decrypted_bytes: bytes) -> Path:
-        file_path.write_bytes(decrypted_bytes)
-        return file_path
+        unique_path = resolve_unique_path(file_path)
+        unique_path.write_bytes(decrypted_bytes)
+        return unique_path

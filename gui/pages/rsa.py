@@ -4,9 +4,10 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QThread, Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
+    QApplication,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -21,6 +22,7 @@ from PySide6.QtWidgets import (
 from crypto.rsa import RSAService
 from gui.activity import get_activity_tracker
 from gui.components import (
+    CryptoTaskWorker,
     CyberCard,
     PageHeader,
     PathPickerRow,
@@ -58,7 +60,7 @@ class RSAPage(QWidget):
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setContentsMargins(40, 32, 40, 40)
-        layout.setSpacing(24)
+        layout.setSpacing(16)
 
         # Header
         header = PageHeader(
@@ -261,10 +263,13 @@ class RSAPage(QWidget):
         dec_layout.addLayout(dec_btn_row)
 
         dec_card.add_layout(dec_layout)
+        enc_card.add_stretch()
+        dec_card.add_stretch()
 
         # 2-column side-by-side layout matching reference design
         ops_row = QHBoxLayout()
         ops_row.setSpacing(16)
+        ops_row.setAlignment(Qt.AlignmentFlag.AlignTop)
         ops_row.addWidget(enc_card, stretch=1)
         ops_row.addWidget(dec_card, stretch=1)
         layout.addLayout(ops_row)
@@ -290,8 +295,8 @@ class RSAPage(QWidget):
         frame.pub_path.setTextInteractionFlags(Qt.TextSelectableByMouse)
         pub_copy = QPushButton("Copy")
         pub_copy.setObjectName("secondaryButton")
-        pub_copy.setFixedHeight(26)
-        pub_copy.setFixedWidth(60)
+        pub_copy.setFixedHeight(30)
+        pub_copy.setMinimumWidth(68)
         pub_copy.setCursor(Qt.PointingHandCursor)
         pub_copy.clicked.connect(lambda: self._copy_clipboard(frame.pub_path.text()))
 
@@ -311,8 +316,8 @@ class RSAPage(QWidget):
         frame.priv_path.setTextInteractionFlags(Qt.TextSelectableByMouse)
         priv_copy = QPushButton("Copy")
         priv_copy.setObjectName("secondaryButton")
-        priv_copy.setFixedHeight(26)
-        priv_copy.setFixedWidth(60)
+        priv_copy.setFixedHeight(30)
+        priv_copy.setMinimumWidth(68)
         priv_copy.setCursor(Qt.PointingHandCursor)
         priv_copy.clicked.connect(lambda: self._copy_clipboard(frame.priv_path.text()))
 
@@ -326,7 +331,8 @@ class RSAPage(QWidget):
         bottom_row.addStretch()
         open_folder_btn = QPushButton("Open Containing Folder")
         open_folder_btn.setObjectName("secondaryButton")
-        open_folder_btn.setFixedHeight(28)
+        open_folder_btn.setFixedHeight(30)
+        open_folder_btn.setMinimumWidth(160)
         open_folder_btn.setCursor(Qt.PointingHandCursor)
         open_folder_btn.clicked.connect(
             lambda: self._open_folder(frame.pub_path.text())
@@ -354,6 +360,54 @@ class RSAPage(QWidget):
             else:
                 subprocess.Popen(["xdg-open", str(folder)])
 
+    def _run_task(
+        self,
+        task_fn,
+        on_success,
+        on_error=None,
+        busy_btn: QPushButton | None = None,
+        busy_text: str = "Processing...",
+    ) -> None:
+        original_text = ""
+        if busy_btn is not None:
+            original_text = busy_btn.text()
+            busy_btn.setEnabled(False)
+            busy_btn.setText(busy_text)
+
+        thread = QThread(self)
+        worker = CryptoTaskWorker(task_fn)
+        worker.moveToThread(thread)
+
+        def _cleanup() -> None:
+            if busy_btn is not None:
+                busy_btn.setEnabled(True)
+                busy_btn.setText(original_text)
+
+        def _handle_success(result) -> None:
+            _cleanup()
+            on_success(result)
+
+        def _handle_error(err_msg: str) -> None:
+            _cleanup()
+            if on_error:
+                on_error(err_msg)
+            else:
+                show_error(self, "Operation Failed", err_msg, theme=self._theme)
+
+        thread.started.connect(worker.run)
+        worker.result_ready.connect(_handle_success)
+        worker.error_occurred.connect(_handle_error)
+        worker.finished.connect(worker.deleteLater)
+        worker.finished.connect(thread.quit)
+        thread.finished.connect(thread.deleteLater)
+        thread.start()
+
+        app = QApplication.instance()
+        while thread.isRunning():
+            if app is not None:
+                app.processEvents()
+            thread.wait(10)
+
     def _generate_keys(self) -> None:
         try:
             key_size = int(self.key_size_selector.current_value())
@@ -363,12 +417,15 @@ class RSAPage(QWidget):
         save_dir = self.key_save_folder.path()
         passphrase = self.key_passphrase_input.text().strip() or None
 
-        try:
-            pub_path, priv_path = self.rsa_service.generate_key_pair(
+        def _do_generate() -> tuple[Path, Path]:
+            return self.rsa_service.generate_key_pair(
                 key_size,
                 save_dir,
                 passphrase=passphrase,
             )
+
+        def _on_success(paths: tuple[Path, Path]) -> None:
+            pub_path, priv_path = paths
             pub_str = str(pub_path.resolve())
             priv_str = str(priv_path.resolve())
 
@@ -398,13 +455,19 @@ class RSAPage(QWidget):
                 details=details_text,
                 theme=self._theme,
             )
-        except Exception as exc:
-            show_error(
+
+        self._run_task(
+            _do_generate,
+            _on_success,
+            on_error=lambda err: show_error(
                 self,
                 "Key Pair Generation Failed",
-                f"Unable to generate RSA keys: {exc}",
+                f"Unable to generate RSA keys: {err}",
                 theme=self._theme,
-            )
+            ),
+            busy_btn=self.gen_key_btn,
+            busy_text="Generating Key Pair...",
+        )
 
     def _encrypt_file(self) -> None:
         pub_path = self.enc_pubkey_picker.path()
@@ -431,12 +494,14 @@ class RSAPage(QWidget):
         if not output_dir:
             output_dir = PROJECT_ROOT / "storage" / "encrypted" / "RSA"
 
-        try:
-            saved_path = self.rsa_service.encrypt_file(
+        def _do_encrypt() -> Path:
+            return self.rsa_service.encrypt_file(
                 public_key_path=pub_path,
                 input_file_path=input_path,
                 output_folder=output_dir,
             )
+
+        def _on_success(saved_path: Path) -> None:
             path_str = str(saved_path.resolve())
 
             self.dec_input_picker.set_text(path_str)
@@ -455,13 +520,19 @@ class RSAPage(QWidget):
                 details=path_str,
                 theme=self._theme,
             )
-        except Exception as exc:
-            show_error(
+
+        self._run_task(
+            _do_encrypt,
+            _on_success,
+            on_error=lambda err: show_error(
                 self,
                 "RSA Encryption Failed",
-                f"Unable to encrypt file: {exc}",
+                f"Unable to encrypt file: {err}",
                 theme=self._theme,
-            )
+            ),
+            busy_btn=self.enc_btn,
+            busy_text="Encrypting File...",
+        )
 
     def _decrypt_file(self) -> None:
         priv_path = self.dec_privkey_picker.path()
@@ -490,13 +561,15 @@ class RSAPage(QWidget):
 
         passphrase = self.dec_passphrase_input.text().strip() or None
 
-        try:
-            saved_path = self.rsa_service.decrypt_file(
+        def _do_decrypt() -> Path:
+            return self.rsa_service.decrypt_file(
                 private_key_path=priv_path,
                 encrypted_file_path=input_path,
                 output_folder=output_dir,
                 passphrase=passphrase,
             )
+
+        def _on_success(saved_path: Path) -> None:
             path_str = str(saved_path.resolve())
 
             get_activity_tracker().record(
@@ -513,13 +586,19 @@ class RSAPage(QWidget):
                 details=path_str,
                 theme=self._theme,
             )
-        except Exception as exc:
-            show_error(
+
+        self._run_task(
+            _do_decrypt,
+            _on_success,
+            on_error=lambda err: show_error(
                 self,
                 "RSA Decryption Failed",
-                f"Unable to decrypt file: {exc}",
+                f"Unable to decrypt file: {err}",
                 theme=self._theme,
-            )
+            ),
+            busy_btn=self.dec_btn,
+            busy_text="Decrypting File...",
+        )
 
     def apply_theme(self, theme: ThemeName) -> None:
         self._theme = theme

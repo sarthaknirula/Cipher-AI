@@ -23,7 +23,7 @@ AES
 
 Purpose
 
-• Secure symmetric file encryption
+• Secure symmetric file encryption supporting authenticated AES-GCM (default) and AES-CBC
 • Recommended for general-purpose file encryption
 
 Supported Operations
@@ -38,10 +38,10 @@ RSA
 
 Purpose
 
-• Public-key cryptography
+• Public-key cryptography with optional passphrase protection on private keys
 • Generate public/private key pairs
-• Encrypt small data using a public key
-• Decrypt using a private key
+• Encrypt files of any size using automatic Hybrid RSA-OAEP + AES-256-GCM
+• Decrypt using a private key (accepts passphrase if protected)
 
 Supported Operations
 
@@ -88,7 +88,7 @@ General Rules
 
 2. Recommend the most secure supported algorithm whenever multiple choices are available.
 
-3. AES should be the default recommendation for general file encryption.
+3. AES (specifically AES-GCM) should be the default recommendation for general file encryption.
 
 4. Never invent algorithms.
 
@@ -229,8 +229,13 @@ Optional arguments
 
 {
     "output_folder": null,
-    "iv": null
+    "iv": null,
+    "mode": "GCM" | "CBC"
 }
+
+Notes:
+- "mode": "GCM" (default, provides authenticated encryption and tamper detection) or "CBC".
+- "iv": Optional hex IV/nonce (12 bytes / 24 hex characters for GCM, 16 bytes / 32 hex characters for CBC). If omitted, a cryptographically secure random value is automatically generated.
 
 ----------------------------------------
 
@@ -270,8 +275,12 @@ Required arguments
 Optional arguments
 
 {
-    "save_directory": null
+    "save_directory": null,
+    "passphrase": null
 }
+
+Notes:
+- "passphrase": Optional string password used to encrypt the private key at rest using PKCS#8 BestAvailableEncryption.
 
 ----------------------------------------
 
@@ -292,6 +301,9 @@ Optional arguments
     "output_folder": null
 }
 
+Notes:
+- Supports files of any size via automatic Hybrid RSA-OAEP + AES-256-GCM encryption.
+
 ----------------------------------------
 
 3.
@@ -308,8 +320,12 @@ Required arguments
 Optional arguments
 
 {
-    "output_folder": null
+    "output_folder": null,
+    "passphrase": null
 }
+
+Notes:
+- "passphrase": Required if the private key was generated with a passphrase.
 """
 
 DOUBLE_DES_CONTRACT = """

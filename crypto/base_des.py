@@ -12,7 +12,13 @@ try:
 except ImportError:
     from cryptography.hazmat.primitives.ciphers.algorithms import TripleDES
 
-from core.paths import PROJECT_ROOT, clean_decrypted_filename, ensure_directory, get_timestamped_directory
+from core.paths import (
+    PROJECT_ROOT,
+    clean_decrypted_filename,
+    ensure_directory,
+    get_timestamped_directory,
+    resolve_unique_path,
+)
 from core.validators import validate_iv
 
 
@@ -111,8 +117,6 @@ class BaseDESService:
         if len(iv) != self.BLOCK_SIZE_BYTES:
             raise ValueError(f"IV must be {self.BLOCK_SIZE_BYTES} bytes.")
 
-        # Single-key DES is represented as 24-byte key replication to adhere to TripleDES standard
-        # without emitting single-key deprecation warnings
         des_key = key_bytes * 3 if len(key_bytes) == 8 else key_bytes
         return Cipher(TripleDES(des_key), modes.CBC(iv))
 
@@ -127,16 +131,16 @@ class BaseDESService:
         return decryptor.update(encrypted_bytes) + decryptor.finalize()
 
     def _save_key(self, file_path: Path, key_bytes: bytes) -> Path:
-        file_path.write_bytes(key_bytes)
-
-        return file_path
+        unique_path = resolve_unique_path(file_path)
+        unique_path.write_bytes(key_bytes)
+        return unique_path
 
     def _save_encrypted_file(self, file_path: Path, encrypted_bytes: bytes) -> Path:
-        file_path.write_bytes(encrypted_bytes)
-
-        return file_path
+        unique_path = resolve_unique_path(file_path)
+        unique_path.write_bytes(encrypted_bytes)
+        return unique_path
 
     def _save_decrypted_file(self, file_path: Path, decrypted_bytes: bytes) -> Path:
-        file_path.write_bytes(decrypted_bytes)
-
-        return file_path
+        unique_path = resolve_unique_path(file_path)
+        unique_path.write_bytes(decrypted_bytes)
+        return unique_path

@@ -4,7 +4,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QObject, QPointF, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -87,6 +87,79 @@ def create_app_icon() -> QIcon:
     for s in (16, 24, 32, 48, 64, 128):
         icon.addPixmap(create_cipher_shield_pixmap(s, is_dark=True))
     return icon
+
+
+def create_copy_icon(size: int = 16, color: str | QColor = "#94A3B8") -> QIcon:
+    """Create a crisp, vector-drawn two-page copy icon without font or emoji clipping."""
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing, True)
+
+    pen = QPen(QColor(color), 1.4)
+    painter.setPen(pen)
+    painter.setBrush(Qt.NoBrush)
+
+    scale = size / 16.0
+    back_path = QPainterPath()
+    back_path.moveTo(6.0 * scale, 2.0 * scale)
+    back_path.lineTo(2.5 * scale, 2.0 * scale)
+    back_path.lineTo(2.5 * scale, 11.0 * scale)
+    back_path.lineTo(9.5 * scale, 11.0 * scale)
+    back_path.lineTo(9.5 * scale, 9.0 * scale)
+    painter.drawPath(back_path)
+
+    front_rect = QRectF(5.5 * scale, 4.5 * scale, 8.0 * scale, 9.5 * scale)
+    painter.drawRoundedRect(front_rect, 1.5 * scale, 1.5 * scale)
+    painter.end()
+    return QIcon(pixmap)
+
+
+def create_check_icon(size: int = 16, color: str | QColor = "#10B981") -> QIcon:
+    """Create a crisp checkmark icon for copy feedback."""
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing, True)
+
+    pen = QPen(QColor(color), 1.8)
+    pen.setCapStyle(Qt.RoundCap)
+    pen.setJoinStyle(Qt.RoundJoin)
+    painter.setPen(pen)
+
+    scale = size / 16.0
+    path = QPainterPath()
+    path.moveTo(3.5 * scale, 8.0 * scale)
+    path.lineTo(6.5 * scale, 11.5 * scale)
+    path.lineTo(12.5 * scale, 4.5 * scale)
+    painter.drawPath(path)
+    painter.end()
+    return QIcon(pixmap)
+
+
+class CryptoTaskWorker(QObject):
+    """Run heavy cryptographic tasks on a worker thread with progress and completion signals."""
+
+    started = Signal()
+    finished = Signal()
+    result_ready = Signal(object)
+    error_occurred = Signal(str)
+
+    def __init__(self, task_fn, *args, **kwargs) -> None:
+        super().__init__()
+        self.task_fn = task_fn
+        self.args = args
+        self.kwargs = kwargs
+
+    def run(self) -> None:
+        self.started.emit()
+        try:
+            res = self.task_fn(*self.args, **self.kwargs)
+            self.result_ready.emit(res)
+        except Exception as exc:
+            self.error_occurred.emit(str(exc))
+        finally:
+            self.finished.emit()
 
 
 class StatusBadge(QFrame):
@@ -181,7 +254,7 @@ class PageHeader(QWidget):
         self.setObjectName("pageHeader")
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 16)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(16)
 
         text_col = QVBoxLayout()
@@ -223,6 +296,7 @@ class CyberCard(QFrame):
         self.card_layout = QVBoxLayout(self)
         self.card_layout.setContentsMargins(22, 18, 22, 18)
         self.card_layout.setSpacing(14)
+        self.card_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         header_row = QHBoxLayout()
         header_row.setSpacing(10)
@@ -247,6 +321,9 @@ class CyberCard(QFrame):
 
     def add_layout(self, layout) -> None:
         self.card_layout.addLayout(layout)
+
+    def add_stretch(self, stretch: int = 1) -> None:
+        self.card_layout.addStretch(stretch)
 
 
 class PathPickerRow(QWidget):

@@ -4,9 +4,10 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QThread, Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
+    QApplication,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -22,6 +23,7 @@ from crypto.double_des import DoubleDESService
 from crypto.triple_des import TripleDESService
 from gui.activity import get_activity_tracker
 from gui.components import (
+    CryptoTaskWorker,
     CyberCard,
     PageHeader,
     PathPickerRow,
@@ -70,7 +72,7 @@ class DESPage(QWidget):
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setContentsMargins(40, 32, 40, 40)
-        layout.setSpacing(24)
+        layout.setSpacing(16)
 
         # Header
         header = PageHeader(
@@ -102,10 +104,20 @@ class DESPage(QWidget):
         adv_icon.setStyleSheet("font-size: 16px;")
         adv_layout.addWidget(adv_icon)
 
+        if self.key_count == 2:
+            adv_sentence = (
+                "Double DES in particular is vulnerable to meet-in-the-middle attacks, "
+                "reducing its effective security to ~57 bits (barely stronger than single DES). "
+                "It is maintained strictly for backwards compatibility and educational analysis."
+            )
+        else:
+            adv_sentence = (
+                "Triple DES (3DES EDE mode) provides 112-168 bits of key strength but uses a legacy "
+                "64-bit block size vulnerable to collision attacks (Sweet32) and is deprecated by NIST. "
+                "For modern high-assurance security, use AES-256."
+            )
         adv_text = QLabel(
-            f"<b>Security Notice:</b> {self.algorithm_name} uses 56-bit DES building blocks "
-            "and is maintained strictly for backwards compatibility and educational analysis. For modern high-assurance "
-            "protection, use AES-256. Double DES in particular is no stronger than single DES: a meet-in-the-middle attack breaks it in about 2^57 steps."
+            f"<b>Security Notice:</b> {self.algorithm_name} uses 56-bit DES building blocks. {adv_sentence}"
         )
         adv_text.setObjectName("advisoryText")
         adv_text.setWordWrap(True)
@@ -259,10 +271,13 @@ class DESPage(QWidget):
         dec_layout.addLayout(dec_btn_row)
 
         dec_card.add_layout(dec_layout)
+        enc_card.add_stretch()
+        dec_card.add_stretch()
 
         # 2-column side-by-side layout matching reference design
         ops_row = QHBoxLayout()
         ops_row.setSpacing(16)
+        ops_row.setAlignment(Qt.AlignmentFlag.AlignTop)
         ops_row.addWidget(enc_card, stretch=1)
         ops_row.addWidget(dec_card, stretch=1)
         layout.addLayout(ops_row)
@@ -289,8 +304,8 @@ class DESPage(QWidget):
             val.setObjectName("pathResultText")
             copy_btn = QPushButton("Copy")
             copy_btn.setObjectName("secondaryButton")
-            copy_btn.setFixedHeight(24)
-            copy_btn.setFixedWidth(54)
+            copy_btn.setFixedHeight(30)
+            copy_btn.setMinimumWidth(68)
             copy_btn.clicked.connect(lambda checked=False, v=val: self._copy_clipboard(v.text()))
 
             row.addWidget(lbl)
@@ -304,7 +319,8 @@ class DESPage(QWidget):
         bottom_row.addStretch()
         open_folder_btn = QPushButton("Open Containing Folder")
         open_folder_btn.setObjectName("secondaryButton")
-        open_folder_btn.setFixedHeight(28)
+        open_folder_btn.setFixedHeight(30)
+        open_folder_btn.setMinimumWidth(160)
         open_folder_btn.clicked.connect(
             lambda: self._open_folder(frame.key_labels[0].text() if frame.key_labels else "")
         )
@@ -331,11 +347,61 @@ class DESPage(QWidget):
             else:
                 subprocess.Popen(["xdg-open", str(folder)])
 
+    def _run_task(
+        self,
+        task_fn,
+        on_success,
+        on_error=None,
+        busy_btn: QPushButton | None = None,
+        busy_text: str = "Processing...",
+    ) -> None:
+        original_text = ""
+        if busy_btn is not None:
+            original_text = busy_btn.text()
+            busy_btn.setEnabled(False)
+            busy_btn.setText(busy_text)
+
+        thread = QThread(self)
+        worker = CryptoTaskWorker(task_fn)
+        worker.moveToThread(thread)
+
+        def _cleanup() -> None:
+            if busy_btn is not None:
+                busy_btn.setEnabled(True)
+                busy_btn.setText(original_text)
+
+        def _handle_success(result) -> None:
+            _cleanup()
+            on_success(result)
+
+        def _handle_error(err_msg: str) -> None:
+            _cleanup()
+            if on_error:
+                on_error(err_msg)
+            else:
+                show_error(self, "Operation Failed", err_msg, theme=self._theme)
+
+        thread.started.connect(worker.run)
+        worker.result_ready.connect(_handle_success)
+        worker.error_occurred.connect(_handle_error)
+        worker.finished.connect(worker.deleteLater)
+        worker.finished.connect(thread.quit)
+        thread.finished.connect(thread.deleteLater)
+        thread.start()
+
+        app = QApplication.instance()
+        while thread.isRunning():
+            if app is not None:
+                app.processEvents()
+            thread.wait(10)
+
     def _generate_keys(self) -> None:
         save_dir = self.key_save_folder.path()
 
-        try:
-            key_paths = self.des_service.generate_key(save_dir)
+        def _do_generate() -> list[Path]:
+            return self.des_service.generate_key(save_dir)
+
+        def _on_success(key_paths: list[Path]) -> None:
             path_strs = [str(p.resolve()) for p in key_paths]
 
             for i, p_str in enumerate(path_strs):
@@ -363,13 +429,19 @@ class DESPage(QWidget):
                 details=details_text,
                 theme=self._theme,
             )
-        except Exception as exc:
-            show_error(
+
+        self._run_task(
+            _do_generate,
+            _on_success,
+            on_error=lambda err: show_error(
                 self,
                 "Key Generation Failed",
-                f"Unable to generate keys: {exc}",
+                f"Unable to generate keys: {err}",
                 theme=self._theme,
-            )
+            ),
+            busy_btn=self.gen_key_btn,
+            busy_text="Generating Keys...",
+        )
 
     def _encrypt_file(self) -> None:
         key_paths = [p.path() for p in self.enc_key_pickers]
@@ -400,15 +472,16 @@ class DESPage(QWidget):
 
         iv = self.enc_iv_input.text().strip() or None
 
-        try:
-            saved_path = self.des_service.encrypt(
+        def _do_encrypt() -> Path:
+            return self.des_service.encrypt(
                 *key_paths,
                 input_file_path=input_path,
                 output_folder=output_dir,
                 iv=iv,
             )
-            path_str = str(saved_path.resolve())
 
+        def _on_success(saved_path: Path) -> None:
+            path_str = str(saved_path.resolve())
             self.dec_input_picker.set_text(path_str)
 
             get_activity_tracker().record(
@@ -425,13 +498,19 @@ class DESPage(QWidget):
                 details=path_str,
                 theme=self._theme,
             )
-        except Exception as exc:
-            show_error(
+
+        self._run_task(
+            _do_encrypt,
+            _on_success,
+            on_error=lambda err: show_error(
                 self,
                 "Encryption Failed",
-                f"Failed to encrypt file: {exc}",
+                f"Failed to encrypt file: {err}",
                 theme=self._theme,
-            )
+            ),
+            busy_btn=self.enc_btn,
+            busy_text="Encrypting File...",
+        )
 
     def _decrypt_file(self) -> None:
         key_paths = [p.path() for p in self.dec_key_pickers]
@@ -460,12 +539,14 @@ class DESPage(QWidget):
             prefix = "DOUBLE_DES" if self.key_count == 2 else "TRIPLE_DES"
             output_dir = PROJECT_ROOT / "storage" / "decrypted" / prefix
 
-        try:
-            saved_path = self.des_service.decrypt(
+        def _do_decrypt() -> Path:
+            return self.des_service.decrypt(
                 *key_paths,
                 encrypted_file_path=input_path,
                 output_folder=output_dir,
             )
+
+        def _on_success(saved_path: Path) -> None:
             path_str = str(saved_path.resolve())
 
             get_activity_tracker().record(
@@ -482,13 +563,19 @@ class DESPage(QWidget):
                 details=path_str,
                 theme=self._theme,
             )
-        except Exception as exc:
-            show_error(
+
+        self._run_task(
+            _do_decrypt,
+            _on_success,
+            on_error=lambda err: show_error(
                 self,
                 "Decryption Failed",
-                f"Failed to decrypt file: {exc}",
+                f"Failed to decrypt file: {err}",
                 theme=self._theme,
-            )
+            ),
+            busy_btn=self.dec_btn,
+            busy_text="Decrypting File...",
+        )
 
     def apply_theme(self, theme: ThemeName) -> None:
         self._theme = theme
