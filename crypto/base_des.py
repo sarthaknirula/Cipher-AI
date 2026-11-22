@@ -1,32 +1,48 @@
+"""Base DES service providing core primitives for DES family ciphers."""
+
 import datetime
 import os
 from pathlib import Path
 
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.primitives.ciphers import Cipher, modes
-from cryptography.hazmat.primitives.ciphers.algorithms import TripleDES
 
+try:
+    from cryptography.hazmat.decrepit.ciphers.algorithms import TripleDES
+except ImportError:
+    from cryptography.hazmat.primitives.ciphers.algorithms import TripleDES
+
+from core.paths import PROJECT_ROOT, clean_decrypted_filename, ensure_directory, get_timestamped_directory
 from core.validators import validate_iv
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 class BaseDESService:
+    """Shared cryptographic foundation for DES-family ciphers."""
+
     KEY_SIZE_BYTES = 8
     BLOCK_SIZE_BYTES = 8
     BLOCK_SIZE_BITS = BLOCK_SIZE_BYTES * 8
 
     def _build_key_directory(self, algorithm_name: str, save_directory: Path | None) -> Path:
         if save_directory is not None:
-            return Path(save_directory)
+            return ensure_directory(Path(save_directory))
 
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        return PROJECT_ROOT / "storage" / "keys" / f"{algorithm_name}_{timestamp}"
+        return get_timestamped_directory("keys", algorithm_name)
+
+    def _build_encryption_directory(self, algorithm_name: str, output_folder: Path | None) -> Path:
+        if output_folder is not None:
+            return ensure_directory(Path(output_folder))
+
+        return get_timestamped_directory("encrypted", algorithm_name)
+
+    def _build_decryption_directory(self, algorithm_name: str, output_folder: Path | None) -> Path:
+        if output_folder is not None:
+            return ensure_directory(Path(output_folder))
+
+        return get_timestamped_directory("decrypted", algorithm_name)
 
     def _ensure_output_folder(self, output_folder: Path) -> None:
-        output_folder.mkdir(parents=True, exist_ok=True)
-        if not output_folder.is_dir():
-            raise ValueError(f"Output folder is not a directory: {output_folder}")
+        ensure_directory(output_folder)
 
     def _validate_file(self, file_path: Path, file_label: str) -> None:
         if not file_path.exists():
@@ -95,7 +111,10 @@ class BaseDESService:
         if len(iv) != self.BLOCK_SIZE_BYTES:
             raise ValueError(f"IV must be {self.BLOCK_SIZE_BYTES} bytes.")
 
-        return Cipher(TripleDES(key_bytes), modes.CBC(iv))
+        # Single-key DES is represented as 24-byte key replication to adhere to TripleDES standard
+        # without emitting single-key deprecation warnings
+        des_key = key_bytes * 3 if len(key_bytes) == 8 else key_bytes
+        return Cipher(TripleDES(des_key), modes.CBC(iv))
 
     def _encrypt_with_key(self, key_bytes: bytes, iv: bytes, file_bytes: bytes) -> bytes:
         encryptor = self._build_cipher(key_bytes, iv).encryptor()

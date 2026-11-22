@@ -283,6 +283,28 @@ def get_app_stylesheet(theme: ThemeName) -> str:
             background-color: {colors["border_subtle"]};
         }}
 
+        QPushButton#copySymbolButton {{
+            background-color: transparent;
+            color: {colors["text_muted"]};
+            border: 1px solid {colors["border_subtle"]};
+            border-radius: 4px;
+            padding: 0px;
+            margin: 0px;
+            font-size: 13px;
+            min-width: 24px;
+            max-width: 28px;
+            min-height: 24px;
+            max-height: 28px;
+        }}
+        QPushButton#copySymbolButton:hover {{
+            background-color: {colors["secondary_hover"]};
+            color: {colors["text_primary"]};
+            border-color: {colors["border_focus"]};
+        }}
+        QPushButton#copySymbolButton:pressed {{
+            background-color: {colors["border_subtle"]};
+        }}
+
         QPushButton#dangerButton {{
             background-color: {colors["danger"]};
             color: #FFFFFF;

@@ -272,12 +272,12 @@ class MessageBubble(QFrame):
             hdr_row.addWidget(title_lbl)
             hdr_row.addStretch()
 
-            copy_btn = QPushButton("Copy")
-            copy_btn.setObjectName("secondaryButton")
-            copy_btn.setFixedHeight(24)
-            copy_btn.setMinimumWidth(56)
+            copy_btn = QPushButton("📋")
+            copy_btn.setObjectName("copySymbolButton")
+            copy_btn.setToolTip("Copy message")
+            copy_btn.setFixedSize(26, 26)
             copy_btn.setCursor(Qt.PointingHandCursor)
-            copy_btn.clicked.connect(lambda: self._copy_text(message))
+            copy_btn.clicked.connect(lambda checked=False, b=copy_btn: self._copy_text(message, b))
             hdr_row.addWidget(copy_btn)
 
             layout.addLayout(hdr_row)
@@ -294,10 +294,13 @@ class MessageBubble(QFrame):
             timestamp.setAlignment(Qt.AlignRight)
             layout.addWidget(timestamp)
 
-    def _copy_text(self, text: str) -> None:
+    def _copy_text(self, text: str, button: QPushButton | None = None) -> None:
         clipboard = QGuiApplication.clipboard()
         if clipboard:
             clipboard.setText(text)
+        if button:
+            button.setText("✓")
+            QTimer.singleShot(1200, lambda: button.setText("📋"))
 
 
 class ToolResultCard(QFrame):
@@ -344,12 +347,12 @@ class ToolResultCard(QFrame):
             val_row.addWidget(value_widget, stretch=1)
 
             if "\n" in value or len(value) > 20:
-                copy_btn = QPushButton("Copy")
-                copy_btn.setObjectName("secondaryButton")
-                copy_btn.setFixedHeight(22)
-                copy_btn.setFixedWidth(52)
+                copy_btn = QPushButton("📋")
+                copy_btn.setObjectName("copySymbolButton")
+                copy_btn.setToolTip("Copy to clipboard")
+                copy_btn.setFixedSize(24, 24)
                 copy_btn.setCursor(Qt.PointingHandCursor)
-                copy_btn.clicked.connect(lambda checked=False, t=value: self._copy_text(t))
+                copy_btn.clicked.connect(lambda checked=False, t=value, b=copy_btn: self._copy_text(t, b))
                 val_row.addWidget(copy_btn)
 
             field_layout.addWidget(label_widget)
@@ -361,10 +364,13 @@ class ToolResultCard(QFrame):
         timestamp.setAlignment(Qt.AlignRight)
         layout.addWidget(timestamp)
 
-    def _copy_text(self, text: str) -> None:
+    def _copy_text(self, text: str, button: QPushButton | None = None) -> None:
         clipboard = QGuiApplication.clipboard()
         if clipboard:
             clipboard.setText(text)
+        if button:
+            button.setText("✓")
+            QTimer.singleShot(1200, lambda: button.setText("📋"))
 
 
 class HomePage(QWidget):

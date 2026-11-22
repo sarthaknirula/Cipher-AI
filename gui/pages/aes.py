@@ -61,7 +61,7 @@ class AESPage(QWidget):
         # Header
         header = PageHeader(
             "AES Symmetric Workspace",
-            "Advanced Encryption Standard (AES-CBC with PKCS#7 padding and 16-byte random IV).",
+            "Advanced Encryption Standard supporting CBC with PKCS#7 padding and modern AEAD GCM mode.",
             badge_text="AES-256 Engine Active",
             badge_status="success",
         )
@@ -71,8 +71,8 @@ class AESPage(QWidget):
         spec_row = QHBoxLayout()
         spec_row.setSpacing(10)
         spec_row.addWidget(SpecPill("Standard", "NIST FIPS 197"))
-        spec_row.addWidget(SpecPill("Cipher Mode", "CBC (Cipher Block Chaining)"))
-        spec_row.addWidget(SpecPill("Padding", "PKCS#7"))
+        spec_row.addWidget(SpecPill("Cipher Mode", "CBC / GCM (AEAD)"))
+        spec_row.addWidget(SpecPill("Padding", "PKCS#7 (CBC)"))
         spec_row.addWidget(SpecPill("Block Size", "128 bits (16 bytes)"))
         spec_row.addStretch()
         layout.addLayout(spec_row)
@@ -132,10 +132,21 @@ class AESPage(QWidget):
         # Card 2: File Encryption
         enc_card = CyberCard(
             "File Encryption",
-            "Encrypt any file using AES in CBC mode with PKCS#7 padding.",
+            "Encrypt any file using AES in CBC mode or modern authenticated GCM mode.",
         )
         enc_layout = QVBoxLayout()
         enc_layout.setSpacing(14)
+
+        # Mode Selector
+        mode_col = QVBoxLayout()
+        mode_col.setSpacing(6)
+        mode_lbl = QLabel("Cipher Mode")
+        mode_lbl.setObjectName("fieldLabel")
+        self.enc_mode_selector = SegmentedSelector(["CBC (Standard)", "GCM (AEAD)"], default_index=0)
+        self.enc_mode_selector.selection_changed.connect(self._on_mode_changed)
+        mode_col.addWidget(mode_lbl)
+        mode_col.addWidget(self.enc_mode_selector)
+        enc_layout.addLayout(mode_col)
 
         self.enc_key_picker = PathPickerRow(
             "AES Key File (*.key)",
@@ -164,7 +175,7 @@ class AESPage(QWidget):
         iv_col.setSpacing(4)
         iv_lbl_row = QHBoxLayout()
         iv_lbl_row.setSpacing(6)
-        iv_lbl = QLabel("Initialization Vector (IV)")
+        iv_lbl = QLabel("Initialization Vector / Nonce")
         iv_lbl.setObjectName("fieldLabel")
         iv_badge = QLabel("[OPTIONAL]")
         iv_badge.setObjectName("optionalBadge")
@@ -174,11 +185,11 @@ class AESPage(QWidget):
 
         self.enc_iv_input = QLineEdit()
         self.enc_iv_input.setPlaceholderText("Optional: Enter 16-byte hex IV (32 hex characters) or leave blank")
-        iv_help = QLabel("Leave empty to generate a cryptographically secure random 16-byte IV automatically.")
-        iv_help.setObjectName("helperText")
+        self.iv_help = QLabel("Leave empty to generate a cryptographically secure random 16-byte IV automatically.")
+        self.iv_help.setObjectName("helperText")
         iv_col.addLayout(iv_lbl_row)
         iv_col.addWidget(self.enc_iv_input)
-        iv_col.addWidget(iv_help)
+        iv_col.addWidget(self.iv_help)
         enc_layout.addLayout(iv_col)
 
         enc_btn_row = QHBoxLayout()
@@ -196,7 +207,7 @@ class AESPage(QWidget):
         # Card 3: File Decryption
         dec_card = CyberCard(
             "File Decryption",
-            "Restore encrypted file (.aes.enc) back to original plaintext.",
+            "Restore encrypted file (.aes.enc) back to original plaintext (auto-detects CBC and GCM).",
         )
         dec_layout = QVBoxLayout()
         dec_layout.setSpacing(14)
@@ -343,6 +354,14 @@ class AESPage(QWidget):
                 theme=self._theme,
             )
 
+    def _on_mode_changed(self, mode_text: str) -> None:
+        if "GCM" in mode_text:
+            self.enc_iv_input.setPlaceholderText("Optional: Enter 12-byte hex nonce (24 hex characters) or leave blank")
+            self.iv_help.setText("Leave empty to generate a cryptographically secure random 12-byte nonce automatically.")
+        else:
+            self.enc_iv_input.setPlaceholderText("Optional: Enter 16-byte hex IV (32 hex characters) or leave blank")
+            self.iv_help.setText("Leave empty to generate a cryptographically secure random 16-byte IV automatically.")
+
     def _encrypt_file(self) -> None:
         key_path = self.enc_key_picker.path()
         if not key_path:
@@ -366,6 +385,8 @@ class AESPage(QWidget):
 
         output_dir = self.enc_output_picker.path()
         iv = self.enc_iv_input.text().strip() or None
+        is_gcm = "GCM" in self.enc_mode_selector.current_value()
+        mode = "GCM" if is_gcm else "CBC"
 
         try:
             saved_path = self.service.encrypt(
@@ -373,15 +394,17 @@ class AESPage(QWidget):
                 input_file_path=input_path,
                 output_folder=output_dir,
                 iv=iv,
+                mode=mode,
             )
             path_str = str(saved_path.resolve())
 
             # Pre-fill decryption encrypted file
             self.dec_input_picker.set_text(path_str)
 
+            algorithm_label = f"AES-{mode}"
             get_activity_tracker().record(
                 operation="File Encryption",
-                algorithm="AES-CBC",
+                algorithm=algorithm_label,
                 target_path=saved_path,
                 status="Success",
             )
@@ -389,7 +412,7 @@ class AESPage(QWidget):
             show_success(
                 self,
                 "File Encrypted Successfully",
-                f"File '{input_path.name}' was encrypted using AES-CBC.",
+                f"File '{input_path.name}' was encrypted using {algorithm_label}.",
                 details=path_str,
                 theme=self._theme,
             )
@@ -434,7 +457,7 @@ class AESPage(QWidget):
 
             get_activity_tracker().record(
                 operation="File Decryption",
-                algorithm="AES-CBC",
+                algorithm="AES",
                 target_path=saved_path,
                 status="Success",
             )
@@ -457,6 +480,8 @@ class AESPage(QWidget):
     def apply_theme(self, theme: ThemeName) -> None:
         self._theme = theme
         self.key_size_selector.apply_theme(theme)
+        if hasattr(self, "enc_mode_selector"):
+            self.enc_mode_selector.apply_theme(theme)
         self._apply_styles()
 
     def _apply_styles(self) -> None:

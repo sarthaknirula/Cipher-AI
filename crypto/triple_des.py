@@ -1,13 +1,19 @@
+"""Triple DES (3DES / TDEA) cryptographic service."""
+
 from pathlib import Path
 
+from core.paths import clean_decrypted_filename
 from crypto.base_des import BaseDESService
 
 
 class TripleDESService(BaseDESService):
+    """Triple DES encryption and decryption service in EDE (Encrypt-Decrypt-Encrypt) mode."""
+
     KEY_COUNT = 3
     KEY_DIRECTORY_PREFIX = "TRIPLE_DES"
 
     def generate_key(self, save_directory: Path | None = None) -> tuple[Path, Path, Path]:
+        """Generate three 8-byte DES keys and save them to disk."""
         save_directory = self._build_key_directory(self.KEY_DIRECTORY_PREFIX, save_directory)
         self._ensure_output_folder(save_directory)
 
@@ -23,17 +29,18 @@ class TripleDESService(BaseDESService):
         key2_path: Path,
         key3_path: Path,
         input_file_path: Path,
-        output_folder: Path,
+        output_folder: Path | None = None,
         iv: bytes | str | None = None,
     ) -> Path:
+        """Encrypt a file using Triple DES (EDE mode with CBC)."""
         key1_path = Path(key1_path)
         key2_path = Path(key2_path)
         key3_path = Path(key3_path)
         input_file_path = Path(input_file_path)
-        output_folder = Path(output_folder)
+        output_folder = self._build_encryption_directory(self.KEY_DIRECTORY_PREFIX, output_folder)
+        self._ensure_output_folder(output_folder)
 
         self._validate_file(input_file_path, "Input file")
-        self._ensure_output_folder(output_folder)
 
         key1, key2, key3 = self._load_keys(key1_path, key2_path, key3_path)
         file_bytes = self._read_file_bytes(input_file_path)
@@ -48,21 +55,24 @@ class TripleDESService(BaseDESService):
         key2_path: Path,
         key3_path: Path,
         encrypted_file_path: Path,
-        output_folder: Path,
+        output_folder: Path | None = None,
     ) -> Path:
+        """Decrypt a Triple DES encrypted file and restore clean filename."""
         key1_path = Path(key1_path)
         key2_path = Path(key2_path)
         key3_path = Path(key3_path)
         encrypted_file_path = Path(encrypted_file_path)
-        output_folder = Path(output_folder)
+        output_folder = self._build_decryption_directory(self.KEY_DIRECTORY_PREFIX, output_folder)
+        self._ensure_output_folder(output_folder)
 
         self._validate_file(encrypted_file_path, "Encrypted file")
-        self._ensure_output_folder(output_folder)
 
         key1, key2, key3 = self._load_keys(key1_path, key2_path, key3_path)
         encrypted_bytes = self._read_file_bytes(encrypted_file_path)
         decrypted_bytes = self._decrypt_bytes(key1, key2, key3, encrypted_bytes)
-        decrypted_file_path = output_folder / f"decrypted_{encrypted_file_path.name}"
+
+        clean_name = clean_decrypted_filename(encrypted_file_path.name, ".triple_des.enc")
+        decrypted_file_path = output_folder / clean_name
 
         return self._save_decrypted_file(decrypted_file_path, decrypted_bytes)
 

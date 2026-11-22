@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -111,6 +112,29 @@ class RSAPage(QWidget):
         top_inputs_row.addWidget(self.key_save_folder, stretch=1)
         key_gen_layout.addLayout(top_inputs_row)
 
+        # Passphrase Input
+        pass_col = QVBoxLayout()
+        pass_col.setSpacing(4)
+        pass_lbl_row = QHBoxLayout()
+        pass_lbl_row.setSpacing(6)
+        pass_lbl = QLabel("Private Key Passphrase")
+        pass_lbl.setObjectName("fieldLabel")
+        pass_badge = QLabel("[OPTIONAL]")
+        pass_badge.setObjectName("optionalBadge")
+        pass_lbl_row.addWidget(pass_lbl)
+        pass_lbl_row.addWidget(pass_badge)
+        pass_lbl_row.addStretch()
+
+        self.key_passphrase_input = QLineEdit()
+        self.key_passphrase_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.key_passphrase_input.setPlaceholderText("Optional: Protect private key with passphrase, or leave empty")
+        pass_help = QLabel("If set, the private key is securely encrypted at rest using PKCS#8 BestAvailableEncryption.")
+        pass_help.setObjectName("helperText")
+        pass_col.addLayout(pass_lbl_row)
+        pass_col.addWidget(self.key_passphrase_input)
+        pass_col.addWidget(pass_help)
+        key_gen_layout.addLayout(pass_col)
+
         # Action Button
         gen_btn_row = QHBoxLayout()
         gen_btn_row.addStretch()
@@ -133,7 +157,7 @@ class RSAPage(QWidget):
         # Card 2: File Encryption
         enc_card = CyberCard(
             "File Encryption",
-            "Encrypt payload or file using the recipient's RSA public key.",
+            "Encrypt files using RSA public key (supports large files via automatic Hybrid AES-256-GCM).",
         )
         enc_layout = QVBoxLayout()
         enc_layout.setSpacing(14)
@@ -175,7 +199,7 @@ class RSAPage(QWidget):
         # Card 3: File Decryption
         dec_card = CyberCard(
             "File Decryption",
-            "Decrypt encrypted payloads using your private key and OAEP padding.",
+            "Decrypt encrypted payloads or hybrid files using private key and OAEP padding.",
         )
         dec_layout = QVBoxLayout()
         dec_layout.setSpacing(14)
@@ -199,9 +223,32 @@ class RSAPage(QWidget):
             required=False,
         )
 
+        # Passphrase Input for Decryption
+        dec_pass_col = QVBoxLayout()
+        dec_pass_col.setSpacing(4)
+        dec_pass_lbl_row = QHBoxLayout()
+        dec_pass_lbl_row.setSpacing(6)
+        dec_pass_lbl = QLabel("Private Key Passphrase")
+        dec_pass_lbl.setObjectName("fieldLabel")
+        dec_pass_badge = QLabel("[OPTIONAL]")
+        dec_pass_badge.setObjectName("optionalBadge")
+        dec_pass_lbl_row.addWidget(dec_pass_lbl)
+        dec_pass_lbl_row.addWidget(dec_pass_badge)
+        dec_pass_lbl_row.addStretch()
+
+        self.dec_passphrase_input = QLineEdit()
+        self.dec_passphrase_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.dec_passphrase_input.setPlaceholderText("Enter passphrase if your private key is encrypted (or leave blank)")
+        dec_pass_help = QLabel("Required only if the private key was generated with a passphrase.")
+        dec_pass_help.setObjectName("helperText")
+        dec_pass_col.addLayout(dec_pass_lbl_row)
+        dec_pass_col.addWidget(self.dec_passphrase_input)
+        dec_pass_col.addWidget(dec_pass_help)
+
         dec_layout.addWidget(self.dec_privkey_picker)
         dec_layout.addWidget(self.dec_input_picker)
         dec_layout.addWidget(self.dec_output_picker)
+        dec_layout.addLayout(dec_pass_col)
 
         dec_btn_row = QHBoxLayout()
         dec_btn_row.addStretch()
@@ -314,9 +361,14 @@ class RSAPage(QWidget):
             key_size = 4096
 
         save_dir = self.key_save_folder.path()
+        passphrase = self.key_passphrase_input.text().strip() or None
 
         try:
-            pub_path, priv_path = self.rsa_service.generate_key_pair(key_size, save_dir)
+            pub_path, priv_path = self.rsa_service.generate_key_pair(
+                key_size,
+                save_dir,
+                passphrase=passphrase,
+            )
             pub_str = str(pub_path.resolve())
             priv_str = str(priv_path.resolve())
 
@@ -336,6 +388,9 @@ class RSAPage(QWidget):
             )
 
             details_text = f"Public Key:\n{pub_str}\n\nPrivate Key:\n{priv_str}"
+            if passphrase:
+                details_text += "\n\nPrivate key is encrypted with passphrase."
+
             show_success(
                 self,
                 "RSA Key Pair Generated",
@@ -433,11 +488,14 @@ class RSAPage(QWidget):
         if not output_dir:
             output_dir = PROJECT_ROOT / "storage" / "decrypted" / "RSA"
 
+        passphrase = self.dec_passphrase_input.text().strip() or None
+
         try:
             saved_path = self.rsa_service.decrypt_file(
                 private_key_path=priv_path,
                 encrypted_file_path=input_path,
                 output_folder=output_dir,
+                passphrase=passphrase,
             )
             path_str = str(saved_path.resolve())
 
