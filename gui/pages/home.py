@@ -53,12 +53,12 @@ def format_algorithm_name(name: str) -> str:
 
 WELCOME_MESSAGE = (
     "CipherAI Security Copilot online.\n\n"
-    "I can assist you with cryptographic operations and analysis:\n\n"
-    "- Generate AES, RSA, and DES keys\n"
-    "- Encrypt and decrypt files\n"
-    "- Explain cryptographic algorithms and security standards\n"
-    "- Compare symmetric vs asymmetric encryption\n\n"
-    "Type a command below or select a quick action to begin."
+    "I am your cryptographic workstation assistant and domain specialist. I can assist you with:\n\n"
+    "- Workstation Operations: Generate AES, RSA, and DES keys; encrypt and decrypt files with AES-GCM/CBC, Hybrid RSA-OAEP, or DES cascades\n"
+    "- General Cryptography Knowledge: Answer questions on any cipher, protocol, or standard (ECC, ChaCha20, Post-Quantum, ZKPs, Hashes/MACs)\n"
+    "- Security Architecture: Protocols (TLS 1.3, Signal, WireGuard, SSH), PKI, key derivation (Argon2), and cryptanalysis\n"
+    "- Security Recommendations: Best practices, algorithm comparisons, and vulnerability assessments\n\n"
+    "Type an operation command or ask any question about cryptography to begin."
 )
 
 

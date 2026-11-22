@@ -25,9 +25,11 @@ from gui.components import (
     CryptoTaskWorker,
     CyberCard,
     PageHeader,
+    PasswordLineEdit,
     PathPickerRow,
     SegmentedSelector,
     SpecPill,
+    TaskBridge,
 )
 from gui.dialogs import show_error, show_info, show_success, show_warning
 from gui.theme import DARK_THEME, ThemeName, get_workspace_stylesheet
@@ -84,7 +86,7 @@ class RSAPage(QWidget):
         # Card 1: Key Pair Generation
         key_gen_card = CyberCard(
             "RSA Key Pair Generation",
-            "Generate public and private key pairs (.pem) using Rivest-Shamir-Adleman algorithm.",
+            "Generate passphrase-protected public and private key pairs (.pem) with PKCS#8 encryption.",
         )
         key_gen_layout = QVBoxLayout()
         key_gen_layout.setSpacing(14)
@@ -121,16 +123,14 @@ class RSAPage(QWidget):
         pass_lbl_row.setSpacing(6)
         pass_lbl = QLabel("Private Key Passphrase")
         pass_lbl.setObjectName("fieldLabel")
-        pass_badge = QLabel("[OPTIONAL]")
-        pass_badge.setObjectName("optionalBadge")
+        pass_badge = QLabel("[REQUIRED]")
+        pass_badge.setObjectName("requiredBadge")
         pass_lbl_row.addWidget(pass_lbl)
         pass_lbl_row.addWidget(pass_badge)
         pass_lbl_row.addStretch()
 
-        self.key_passphrase_input = QLineEdit()
-        self.key_passphrase_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.key_passphrase_input.setPlaceholderText("Optional: Protect private key with passphrase, or leave empty")
-        pass_help = QLabel("If set, the private key is securely encrypted at rest using PKCS#8 BestAvailableEncryption.")
+        self.key_passphrase_input = PasswordLineEdit("Enter passphrase to protect your private key (Required)")
+        pass_help = QLabel("Mandatory: The private key is always encrypted at rest using PKCS#8 BestAvailableEncryption.")
         pass_help.setObjectName("helperText")
         pass_col.addLayout(pass_lbl_row)
         pass_col.addWidget(self.key_passphrase_input)
@@ -238,9 +238,7 @@ class RSAPage(QWidget):
         dec_pass_lbl_row.addWidget(dec_pass_badge)
         dec_pass_lbl_row.addStretch()
 
-        self.dec_passphrase_input = QLineEdit()
-        self.dec_passphrase_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.dec_passphrase_input.setPlaceholderText("Enter passphrase if your private key is encrypted (or leave blank)")
+        self.dec_passphrase_input = PasswordLineEdit("Enter passphrase if your private key is encrypted (or leave blank)")
         dec_pass_help = QLabel("Required only if the private key was generated with a passphrase.")
         dec_pass_help.setObjectName("helperText")
         dec_pass_col.addLayout(dec_pass_lbl_row)
@@ -383,23 +381,23 @@ class RSAPage(QWidget):
                 busy_btn.setEnabled(True)
                 busy_btn.setText(original_text)
 
-        def _handle_success(result) -> None:
-            _cleanup()
-            on_success(result)
-
-        def _handle_error(err_msg: str) -> None:
-            _cleanup()
-            if on_error:
-                on_error(err_msg)
-            else:
-                show_error(self, "Operation Failed", err_msg, theme=self._theme)
+        fallback_error = (
+            on_error
+            if on_error
+            else lambda err: show_error(self, "Operation Failed", err, theme=self._theme)
+        )
+        bridge = TaskBridge(
+            on_success=on_success,
+            on_error=fallback_error,
+            cleanup=_cleanup,
+            parent=self,
+        )
 
         thread.started.connect(worker.run)
-        worker.result_ready.connect(_handle_success)
-        worker.error_occurred.connect(_handle_error)
+        worker.result_ready.connect(bridge.handle_success, Qt.QueuedConnection)
+        worker.error_occurred.connect(bridge.handle_error, Qt.QueuedConnection)
         worker.finished.connect(worker.deleteLater)
         worker.finished.connect(thread.quit)
-        thread.finished.connect(thread.deleteLater)
         thread.start()
 
         app = QApplication.instance()
@@ -408,14 +406,26 @@ class RSAPage(QWidget):
                 app.processEvents()
             thread.wait(10)
 
+        thread.deleteLater()
+        bridge.deleteLater()
+
     def _generate_keys(self) -> None:
+        passphrase = self.key_passphrase_input.text().strip()
+        if not passphrase:
+            show_warning(
+                self,
+                "Passphrase Required",
+                "A passphrase is required to generate and protect your RSA private key. Please enter a passphrase.",
+                theme=self._theme,
+            )
+            return
+
         try:
             key_size = int(self.key_size_selector.current_value())
         except ValueError:
             key_size = 4096
 
         save_dir = self.key_save_folder.path()
-        passphrase = self.key_passphrase_input.text().strip() or None
 
         def _do_generate() -> tuple[Path, Path]:
             return self.rsa_service.generate_key_pair(
@@ -436,6 +446,7 @@ class RSAPage(QWidget):
             # Pre-fill for user convenience
             self.enc_pubkey_picker.set_text(pub_str)
             self.dec_privkey_picker.set_text(priv_str)
+            self.dec_passphrase_input.setText(passphrase)
 
             get_activity_tracker().record(
                 operation="Key Pair Generation",
@@ -444,14 +455,15 @@ class RSAPage(QWidget):
                 status="Success",
             )
 
-            details_text = f"Public Key:\n{pub_str}\n\nPrivate Key:\n{priv_str}"
-            if passphrase:
-                details_text += "\n\nPrivate key is encrypted with passphrase."
+            details_text = (
+                f"Public Key:\n{pub_str}\n\nPrivate Key:\n{priv_str}\n\n"
+                "Private key is encrypted at rest with your passphrase."
+            )
 
             show_success(
                 self,
                 "RSA Key Pair Generated",
-                f"Generated a {key_size}-bit RSA key pair.",
+                f"Generated a {key_size}-bit passphrase-protected RSA key pair.",
                 details=details_text,
                 theme=self._theme,
             )

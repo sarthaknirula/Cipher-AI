@@ -77,18 +77,18 @@ class RedesignFunctionalTestSuite(unittest.TestCase):
     def test_04_rsa_key_generation(self) -> None:
         with TemporaryDirectory() as tmp:
             service = RSAService()
-            pub_path, priv_path = service.generate_key_pair(2048, Path(tmp))
+            pub_path, priv_path = service.generate_key_pair(2048, Path(tmp), passphrase="test_passphrase")
             self.assertTrue(pub_path.exists())
             self.assertTrue(priv_path.exists())
             self.assertIn(b"BEGIN PUBLIC KEY", pub_path.read_bytes())
-            self.assertIn(b"BEGIN PRIVATE KEY", priv_path.read_bytes())
+            self.assertIn(b"ENCRYPTED PRIVATE KEY", priv_path.read_bytes())
 
     # 5. RSA encryption
     def test_05_rsa_encryption(self) -> None:
         with TemporaryDirectory() as tmp:
             service = RSAService()
             tmp_p = Path(tmp)
-            pub_path, priv_path = service.generate_key_pair(2048, tmp_p)
+            pub_path, priv_path = service.generate_key_pair(2048, tmp_p, passphrase="test_passphrase")
             input_file = tmp_p / "rsa_plain.txt"
             input_file.write_text("Asymmetric Secret")
 
@@ -101,13 +101,13 @@ class RedesignFunctionalTestSuite(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             service = RSAService()
             tmp_p = Path(tmp)
-            pub_path, priv_path = service.generate_key_pair(2048, tmp_p)
+            pub_path, priv_path = service.generate_key_pair(2048, tmp_p, passphrase="test_passphrase")
             input_file = tmp_p / "rsa_plain.txt"
             content = "Top Secret RSA Token"
             input_file.write_text(content)
             enc_path = service.encrypt_file(pub_path, input_file, tmp_p / "enc")
 
-            dec_path = service.decrypt_file(priv_path, enc_path, tmp_p / "dec")
+            dec_path = service.decrypt_file(priv_path, enc_path, tmp_p / "dec", passphrase="test_passphrase")
             self.assertTrue(dec_path.exists())
             self.assertEqual(dec_path.read_text(), content)
 
@@ -227,7 +227,7 @@ class RedesignFunctionalTestSuite(unittest.TestCase):
         service = RSAService()
         with TemporaryDirectory() as tmp:
             tmp_p = Path(tmp)
-            pub, priv = service.generate_key_pair(2048, tmp_p)
+            pub, priv = service.generate_key_pair(2048, tmp_p, passphrase="test_passphrase")
             inp = tmp_p / "inp.txt"
             inp.write_text("hello")
             # Output folder cannot be an existing file

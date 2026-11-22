@@ -1,353 +1,285 @@
-# Cipher AI
+# Cipher AI — Cryptographic Security Workstation & AI Copilot
 
-Cipher AI is a desktop application built with **Python** and **PySide6** that
-provides cryptographic utilities through a clean graphical interface. The project
-focuses on modular architecture, separation of concerns, and extensibility. It
-also includes an AI-powered assistant that helps users understand and perform
-cryptographic workflows through the existing application services.
+Cipher AI is an enterprise-grade desktop cybersecurity workstation built with **Python 3.12**, **PySide6 (Qt6)**, and **cryptography (OpenSSL Hazmat)**, integrated with an AI Copilot powered by Google Gemini.
 
-> **Project Status:** 🚧 Under Active Development
+The workstation combines hardened, non-blocking cryptographic engines with an AI assistant that serves a dual role: an automated workstation operator for local cryptographic workflows and an unrestricted domain expert across theoretical and applied cryptography.
 
 ---
 
-# Current Features
+## Table of Contents
 
-## Encryption Algorithms
-
-### AES
-- File Encryption
-- File Decryption
-- Secure Key Generation
-- Optional hexadecimal IV support for encryption
-
-### RSA
-- RSA Key Pair Generation
-- Encryption
-- Decryption
-
-### Double DES
-- File Encryption
-- File Decryption
-- Key Generation
-- Optional hexadecimal IV support for encryption
-
-### Triple DES
-- File Encryption
-- File Decryption
-- Key Generation
-- Optional hexadecimal IV support for encryption
+- [Core Capabilities](#core-capabilities)
+- [Cryptographic Specifications](#cryptographic-specifications)
+- [AI Copilot & Domain Specialist](#ai-copilot--domain-specialist)
+- [System Architecture](#system-architecture)
+- [Application Workspaces](#application-workspaces)
+- [Safety, Validation & Anti-Tampering](#safety-validation--anti-tampering)
+- [Installation & Quickstart](#installation--quickstart)
+- [Configuration](#configuration)
+- [Running the Application](#running-the-application)
+- [Test Suite & Quality Assurance](#test-suite--quality-assurance)
+- [Repository Structure](#repository-structure)
 
 ---
 
-# Validation Behaviour
+## Core Capabilities
 
-The application validates required paths before cryptographic services run.
-
-- Input files and key files must exist.
-- Explicit output directories must already exist.
-- If an AI-requested output directory does not exist, the assistant pauses and
-  asks whether the user wants to provide another directory or use the default
-  application output directory.
-- The application does not silently change a user-provided output location.
-- When the default output directory is selected, the application reports the actual generated file path.
-
-IV handling is centralized through a shared validator.
-
-- String IVs are trimmed before validation.
-- IVs are parsed using Python's `bytes.fromhex()`.
-- Validation checks the decoded byte array, not the raw string length.
-- AES requires a 16-byte IV, represented as 32 hexadecimal characters.
-- Double DES and Triple DES use the DES-family CBC block size, so their IVs are
-  validated against the byte length required by the underlying cipher.
+- **Authenticated Symmetric Encryption (AES-GCM)**: Modern Galois/Counter Mode with 128-bit authentication tags and 12-byte initialization vectors/nonces to detect ciphertext tampering.
+- **Legacy Symmetric Encryption (AES-CBC)**: Cipher Block Chaining with PKCS#7 padding and 16-byte random IVs.
+- **Mandatory Passphrase-Protected Asymmetric Keys (RSA)**: Standard 2048, 3072, and 4096-bit key pair generation strictly requiring PKCS#8 BestAvailableEncryption with user passphrases (unencrypted private key export is completely disabled).
+- **Hybrid RSA-OAEP File Encryption**: Automatic envelope encryption combining RSA-OAEP (SHA-256 / MGF1) for ephemeral key exchange and AES-256-GCM for arbitrary-sized file payloads.
+- **Stream-Chunked Processing**: Buffered 64 KB memory chunks for symmetric ciphers and hashing, enabling encryption of multi-gigabyte files with negligible memory overhead.
+- **Cascade DES Implementations**: Double DES and Triple DES (3DES EDE mode) for legacy compatibility, cryptanalysis demonstration, and educational analysis.
+- **Cryptographic Hashing & HMAC**: SHA-256, SHA-512, SHA-3, BLAKE2, and HMAC verification routines.
+- **Non-Blocking Multithreaded GUI**: Asynchronous background operations managed via `CryptoTaskWorker` and `QThread`, preventing UI freezing during heavy 4096-bit key generation or large file encryption.
+- **Smart Path Conflict Resolution**: Built-in path resolution that prevents accidental file overwrites by appending incrementing numeric suffixes.
+- **Cybersecurity Telemetry & Activity Auditing**: In-memory telemetry engine that logs every operation, cryptographic algorithm, outcome, and timestamp across workspaces.
+- **Dynamic Theming**: Multi-palette styling engine supporting Dark Mode, Light Mode, and Cyberpunk high-contrast themes.
 
 ---
 
-# AI Assistant
+## Cryptographic Specifications
 
-The project includes an AI assistant powered by the Gemini API.
-
-Current progress includes:
-
-- Gemini API integration
-- Persistent chat session
-- Prompt engineering
-- Modular AI architecture
-- Dedicated AI service layer
-- JSON response parsing and dispatch
-- Tool adapters for supported crypto services
-- Path validation before tool execution
-
-The AI assistant is designed to:
-
-- Explain cryptographic concepts
-- Recommend suitable encryption algorithms
-- Understand user intent
-- Return structured JSON responses for application actions
-- Ask clarification questions when required information is missing or invalid
-
-The AI **does not perform cryptographic operations directly**. Instead, it
-delegates operations to the existing cryptographic service layer.
+| Algorithm | Primitive | Supported Key Sizes | Modes / Padding | Nonce / IV | Purpose & Security Status |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **AES** | Symmetric Block Cipher | 128, 192, 256 bits | **GCM** (AEAD, Default)<br>CBC (PKCS#7) | 12 bytes (GCM)<br>16 bytes (CBC) | **High Assurance**: Recommended NIST FIPS 197 standard for all general-purpose file encryption. |
+| **RSA** | Asymmetric Key Pair | 2048, 3072, 4096 bits | OAEP (SHA-256 / MGF1)<br>Hybrid AES-256-GCM | N/A (OAEP)<br>12 bytes (Hybrid) | **High Assurance**: Public-key encryption with mandatory passphrase protection on all private keys. |
+| **Double DES** | Symmetric Cascade | 112 bits (2x 56-bit keys) | Cascade CBC | 8 bytes | **Legacy / Educational**: Vulnerable to Meet-in-the-Middle attacks (effective strength ~57 bits). |
+| **Triple DES** | Symmetric Cascade | 168 bits (3x 56-bit keys) | 3DES-EDE CBC | 8 bytes | **Legacy / Deprecated**: Vulnerable to Sweet32 64-bit block collision attacks. Maintained for legacy interop. |
+| **Hashing** | Cryptographic Digests | 256, 512 bits | SHA-2, SHA-3, BLAKE2 | N/A | **Integrity & Verification**: File integrity checking and constant-time HMAC message authentication. |
 
 ---
 
-# Architecture
+## AI Copilot & Domain Specialist
 
-The application follows a layered architecture.
+The AI module is powered by the Google Gemini API with a dual-mode operational contract:
 
-```text
-GUI
+### 1. Workstation Operator (`action: "tool"`)
+When natural language requests describe actions on the local filesystem (such as generating keys or encrypting files), the AI constructs validated JSON tool payloads. Tool execution is strictly guarded by the application dispatcher:
+- Execution is restricted to the 4 implemented engines: `AES`, `RSA`, `DOUBLE_DES`, `TRIPLE_DES`.
+- If required parameters (e.g. input file path, key file path) are missing, the AI pauses and asks a clarification question (`action: "clarify"`).
+- Target filepaths and directory structures are validated before any cryptographic Hazmat service is invoked.
 
-↓
+### 2. Universal Cryptography Domain Expert (`action: "chat"`)
+When users ask theoretical, architectural, or learning questions, the AI responds in conversational chat mode (`action: "chat"`). In this mode, the assistant has no algorithm restrictions and covers the full breadth of modern and historical cryptology:
+- **Symmetric & Stream Ciphers**: ChaCha20-Poly1305, Serpent, Twofish, Camellia, modes of operation (GCM, CTR, SIV).
+- **Elliptic Curve Cryptography**: Curve25519, Ed25519, NIST P-256, secp256k1, pairing-friendly curves.
+- **Post-Quantum Cryptography (PQC)**: NIST standards including ML-KEM (Kyber), ML-DSA (Dilithium), SLH-DSA (SPHINCS+), and lattice foundations.
+- **Protocols & Architectures**: TLS 1.3, Signal Protocol (Double Ratchet), WireGuard, SSHv2, PGP/GPG, WebAuthn/FIDO2.
+- **Advanced Primitives**: Zero-Knowledge Proofs (zk-SNARKs, zk-STARKs), Fully Homomorphic Encryption (FHE), Shamir's Secret Sharing.
+- **Cryptanalysis & Attacks**: Side-channel analysis, timing attacks, padding oracle exploits, and historical cryptanalysis.
 
-Service Layer
+---
 
-↓
+## System Architecture
 
-Cryptographic Operations
+The application implements a strict layered architecture with clear separation of concerns:
 
-↓
-
-Filesystem
 ```
-
-Each feature follows the same design philosophy.
-
-Example:
-
-```text
-AES Page
-
-↓
-
-AES Service
-
-↓
-
-Storage
+┌────────────────────────────────────────────────────────┐
+│                   Presentation Layer                   │
+│  PySide6 Workstations: Dashboard, AES, RSA, DES, Chat  │
+└───────────────────────────┬────────────────────────────┘
+                            │ Dispatches tasks
+┌───────────────────────────▼────────────────────────────┐
+│                    Controller Layer                    │
+│      AIDispatcher, ActivityTracker, CryptoTaskWorker   │
+└─────────────┬────────────────────────────┬─────────────┘
+              │ Direct Tool Calls          │ Background QThread
+┌─────────────▼─────────────┐┌─────────────▼─────────────┐
+│      AI Service Layer     ││    Cryptographic Services │
+│  AIService, Parser, Tools ││ AES, RSA, DoubleDES, 3DES │
+└─────────────┬─────────────┘└─────────────┬─────────────┘
+              │ API Transport              │ Cryptographic Primitives
+┌─────────────▼─────────────┐┌─────────────▼─────────────┐
+│     Google Gemini API     ││ cryptography (OpenSSL)    │
+└───────────────────────────┘└───────────────────────────┘
 ```
 
 ---
 
-# AI Architecture
+## Application Workspaces
 
-The AI module follows the architecture below.
+1. **Cybersecurity Dashboard**:
+   - High-level telemetry displaying total operations, success rates, and engine status badges.
+   - Quick action launcher for instant navigation to encryption tasks.
+   - Live activity log detailing operation types, algorithm variants, targets, and execution status.
+   - Cryptographic environment viewer showing runtime provider information and OpenSSL versions.
 
-```text
-User
+2. **AES Symmetric Workspace**:
+   - Cryptographically secure key generator for 128, 192, and 256-bit keys.
+   - Authenticated GCM mode (default) with 12-byte nonce input and tampering detection.
+   - Standard CBC mode with PKCS#7 padding and 16-byte IV input.
+   - Independent 2-column side-by-side file encryption and decryption panels.
 
-↓
+3. **RSA Asymmetric Workspace**:
+   - Key pair generator supporting 2048, 3072, and 4096-bit primes.
+   - Mandatory passphrase protection for exported PKCS#8 private keys (`.pem`).
+   - Seamless Hybrid RSA-OAEP + AES-256-GCM encryption for files of any size.
+   - Secure private key decryption with passphrase prompting.
 
-AI Page
+4. **DES & Triple DES Workspaces**:
+   - Double DES cascade generator (2 distinct 56-bit DES keys) and Triple DES generator (3 distinct 56-bit DES keys).
+   - Dedicated security notices explaining Meet-in-the-Middle and Sweet32 attack vectors.
+   - File encryption and decryption with automatic IV derivation across cascade passes.
 
-↓
+5. **AI Assistant Copilot**:
+   - Interactive chat interface supporting markdown formatting and code blocks.
+   - Real-time execution status indicators with pause and resume controls.
+   - Structured result cards displaying key paths, file outputs, and operation parameters.
+   - Non-intrusive borderless copy controls with visual feedback.
 
-AI Service
-
-↓
-
-Gemini API
-
-↓
-
-Structured JSON
-
-↓
-
-Parser
-
-↓
-
-Dispatcher
-
-↓
-
-Tools
-
-↓
-
-Cryptographic Services
-```
-
-This design keeps responsibilities clearly separated and allows the AI system to
-grow independently of the cryptographic implementation.
+6. **System Settings**:
+   - Instant theme switching (Dark Theme, Light Theme, Cyberpunk High Contrast).
+   - Environment and library audit panel.
 
 ---
 
-# Project Structure
+## Safety, Validation & Anti-Tampering
 
-```text
-CipherAI/
-
-├── ai/
-│   ├── dispatcher.py
-│   ├── parser.py
-│   ├── prompts.py
-│   ├── service.py
-│   ├── session_state.py
-│   └── tools/
-│
-├── assets/
-├── core/
-├── crypto/
-├── gui/
-├── storage/
-├── tests/
-│
-├── app.py
-├── config.py
-├── requirements.txt
-└── README.md
-```
+- **Unique Path Resolution**: Every file save operation passes through `resolve_unique_path()`. If a file with the target name already exists, an incrementing numeric suffix (`_1`, `_2`) is added automatically.
+- **Strict IV & Nonce Validation**: Hexadecimal IVs and nonces are trimmed and verified after hex-decoding to ensure proper byte length rather than simple character count.
+- **Tamper Detection**: Decrypting an AES-GCM payload with modified ciphertext or an altered authentication tag immediately aborts with an authentication failure error.
+- **Non-Deprecated Hazmat Imports**: Modern TripleDES imports and cipher primitives from the `cryptography` library ensure compatibility with contemporary OpenSSL releases.
+- **Code Fence Normalization**: The AI parser automatically strips markdown code fences before parsing JSON responses from the Gemini API.
 
 ---
 
-# Technologies Used
+## Installation & Quickstart
 
-- Python
-- PySide6
-- Google Gemini API
-- Cryptography Library
-- unittest
+### Prerequisites
+- Python 3.10, 3.11, or 3.12
+- Git
 
----
-
-# Installation
-
-Clone the repository.
-
+### 1. Clone the Repository
 ```bash
-git clone <repository-url>
+git clone https://github.com/your-username/CipherAI.git
 cd CipherAI
 ```
 
-Create a virtual environment.
+### 2. Set Up a Virtual Environment
 
-```bash
+**Windows (PowerShell):**
+```powershell
 python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 ```
 
-Activate the virtual environment.
-
-### Linux / macOS
-
+**Linux / macOS:**
 ```bash
+python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-### Windows
-
-```bash
-.venv\Scripts\activate
-```
-
-Install the required dependencies.
-
+### 3. Install Dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
 ---
 
-# Gemini API Configuration
+## Configuration
 
-Generate a Gemini API key from Google AI Studio.
+The AI Assistant Copilot requires an API key from Google AI Studio.
 
-Export the API key as an environment variable.
-
-### Linux / macOS
-
-```bash
-export GEMINI_API_KEY="YOUR_API_KEY"
+**Windows (PowerShell):**
+```powershell
+$env:GEMINI_API_KEY="your-api-key-here"
 ```
 
-### Windows
-
+**Windows (Command Prompt):**
 ```cmd
-set GEMINI_API_KEY=YOUR_API_KEY
+set GEMINI_API_KEY=your-api-key-here
 ```
 
-The application automatically loads the API key from the environment.
+**Linux / macOS:**
+```bash
+export GEMINI_API_KEY="your-api-key-here"
+```
+
+*(Note: The core cryptographic workstations for AES, RSA, Double DES, and Triple DES operate completely locally and do not require an API key or internet connection.)*
 
 ---
 
-# Running the Application
+## Running the Application
 
+Launch the desktop suite:
 ```bash
 python app.py
 ```
 
 ---
 
-# Running Tests
+## Test Suite & Quality Assurance
 
-Run the focused local tests that do not require the Gemini client dependency.
+The project includes a comprehensive automated test suite covering cryptographic primitives, parser validation, dispatcher routing, prompt contracts, and full GUI end-to-end flows.
 
-```bash
-python -m unittest tests.test_tools tests.test_iv_validation
+Run all unit and integration tests:
+```powershell
+$env:PYTHONPATH=".;.venv/Lib/site-packages"; python -m unittest discover tests
 ```
 
-Run all tests.
+### Test Suite Structure
+- `tests/test_crypto_enhancements.py`: AES-GCM tampering detection, streaming encryption, hybrid RSA, passphrase protection, and filename cleanup.
+- `tests/test_prompts.py`: Verification of AI domain knowledge scope, dual-mode contracts, and tool execution boundaries.
+- `tests/test_dispatcher.py`: Routing verification for chat, clarification, and tool execution requests.
+- `tests/test_parser.py`: JSON parsing, markdown code fence stripping, and schema validation.
+- `tests/test_iv_validation.py`: Hexadecimal IV and nonce byte-length validation routines.
+- `tests/test_redesign_suite.py`: Functional UI test suite covering all workstation operations, theme changes, and logging.
+- `tests/test_smoke_e2e.py`: End-to-end GUI smoke tests verifying asynchronous worker threads and path propagation.
+- `tests/test_responsive_resizing.py`: Multi-resolution DPI and dynamic resize validation.
 
-```bash
-python -m unittest discover -s tests
+---
+
+## Repository Structure
+
 ```
-
-The full test suite imports the Gemini AI service. If the Google Gemini package
-is not installed, full discovery will fail with a missing `google.genai`
-dependency.
-
-An interactive smoke test is available for manually testing the AI service.
-
-```bash
-python tests/test_ai_service.py
+CipherAI/
+├── ai/
+│   ├── conversation.py       # Chat history and context tracking
+│   ├── dispatcher.py         # Routes AI actions to tools or chat
+│   ├── parser.py             # Validates and cleans JSON responses
+│   ├── prompts.py            # System prompt, domain scope, and tool contracts
+│   ├── service.py            # Google Gemini client integration
+│   ├── session_state.py      # Working memory for recent keys and paths
+│   └── tools/                # Workstation adapters (AES, RSA, DES)
+│
+├── core/
+│   ├── paths.py              # File conflict resolution and unique paths
+│   ├── settings.py           # Gemini model configuration and temperatures
+│   └── validators.py         # IV, key, and directory validators
+│
+├── crypto/
+│   ├── aes.py                # AES-GCM and AES-CBC symmetric service
+│   ├── base_des.py           # Core DES primitives and unique path saving
+│   ├── double_des.py         # Double DES cascade service
+│   ├── hashing.py            # Cryptographic digests and HMAC utilities
+│   ├── rsa.py                # RSA-OAEP, passphrase handling, and hybrid cipher
+│   └── triple_des.py         # Triple DES EDE service
+│
+├── gui/
+│   ├── activity.py           # In-memory activity tracking and logging
+│   ├── components.py         # Cards, headers, pickers, and CryptoTaskWorker
+│   ├── dialogs.py            # Styled success, error, and result dialogs
+│   ├── main_window.py        # Sidebar navigation and workspace stack
+│   ├── theme.py              # Dark, Light, and Cyberpunk color palettes
+│   └── pages/
+│       ├── aes.py            # AES workspace page
+│       ├── dashboard.py      # Telemetry, activity log, and quick launcher
+│       ├── des.py            # DES / Triple DES workspace page
+│       ├── home.py           # AI Assistant chat workspace
+│       ├── rsa.py            # RSA asymmetric workspace page
+│       └── settings.py       # Theme selector and system diagnostics
+│
+├── storage/                  # Default storage for keys, encrypted and decrypted files
+├── tests/                    # 74 automated unit and integration tests
+├── app.py                    # Application entry point
+├── requirements.txt          # Python package dependencies
+└── README.md                 # Complete project documentation
 ```
 
 ---
 
-# Design Principles
+## License
 
-The project is built around the following principles:
-
-- Separation of Concerns
-- Single Responsibility Principle
-- Modular Design
-- Maintainability
-- Extensibility
-- Clean Architecture
-
----
-
-# Future Improvements
-
-## AI Assistant
-
-- AI-powered workflow automation
-- Context-aware conversations
-- Better prompt engineering
-
-## Cryptography
-
-- Digital Signatures
-- Hashing Algorithms
-- HMAC Support
-- Secure File Hash Verification
-- Certificate Management
-- Hybrid Encryption (AES + RSA)
-
-## Application
-
-- File drag-and-drop support
-- Recent operations history
-- User preferences
-- Theme customization
-- Logging system
-- Better error reporting
-- Plugin architecture
-- Improved key management
-- Secure key vault
-
----
-
-# License
-
-This project is intended for educational and learning purposes.
+This project is licensed for educational, research, and cybersecurity engineering purposes.

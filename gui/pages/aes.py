@@ -28,6 +28,7 @@ from gui.components import (
     PathPickerRow,
     SegmentedSelector,
     SpecPill,
+    TaskBridge,
 )
 from gui.dialogs import show_error, show_info, show_success, show_warning
 from gui.theme import DARK_THEME, ThemeName, get_workspace_stylesheet
@@ -341,23 +342,23 @@ class AESPage(QWidget):
                 busy_btn.setEnabled(True)
                 busy_btn.setText(original_text)
 
-        def _handle_success(result) -> None:
-            _cleanup()
-            on_success(result)
-
-        def _handle_error(err_msg: str) -> None:
-            _cleanup()
-            if on_error:
-                on_error(err_msg)
-            else:
-                show_error(self, "Operation Failed", err_msg, theme=self._theme)
+        fallback_error = (
+            on_error
+            if on_error
+            else lambda err: show_error(self, "Operation Failed", err, theme=self._theme)
+        )
+        bridge = TaskBridge(
+            on_success=on_success,
+            on_error=fallback_error,
+            cleanup=_cleanup,
+            parent=self,
+        )
 
         thread.started.connect(worker.run)
-        worker.result_ready.connect(_handle_success)
-        worker.error_occurred.connect(_handle_error)
+        worker.result_ready.connect(bridge.handle_success, Qt.QueuedConnection)
+        worker.error_occurred.connect(bridge.handle_error, Qt.QueuedConnection)
         worker.finished.connect(worker.deleteLater)
         worker.finished.connect(thread.quit)
-        thread.finished.connect(thread.deleteLater)
         thread.start()
 
         app = QApplication.instance()
@@ -365,6 +366,9 @@ class AESPage(QWidget):
             if app is not None:
                 app.processEvents()
             thread.wait(10)
+
+        thread.deleteLater()
+        bridge.deleteLater()
 
     def _generate_key(self) -> None:
         try:

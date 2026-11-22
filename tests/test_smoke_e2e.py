@@ -69,7 +69,8 @@ class SmokeE2ETest(unittest.TestCase):
             # 2. RSA Workspace E2E
             rsa_page = window._page_widgets[window._page_map["rsa"]]
             rsa_page.key_save_folder.set_text(str(tmp / "rsa_keys"))
-            with patch("gui.pages.rsa.show_success"), patch("gui.pages.rsa.show_error"):
+            rsa_page.key_passphrase_input.setText("SmokeTestPassphrase123")
+            with patch("gui.pages.rsa.show_success"), patch("gui.pages.rsa.show_error"), patch("gui.pages.rsa.show_warning"):
                 rsa_page._generate_keys()
                 APP.processEvents()
 

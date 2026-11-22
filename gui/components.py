@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 from PySide6.QtCore import QObject, QPointF, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import (
     QBrush,
@@ -137,6 +138,79 @@ def create_check_icon(size: int = 16, color: str | QColor = "#10B981") -> QIcon:
     return QIcon(pixmap)
 
 
+def create_eye_icon(show: bool = False, size: int = 16, color: str | QColor = "#94A3B8") -> QIcon:
+    """Create a crisp vector eye icon to toggle password / passphrase visibility."""
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing, True)
+
+    col = QColor(color)
+    pen = QPen(col, 1.4)
+    pen.setCapStyle(Qt.RoundCap)
+    pen.setJoinStyle(Qt.RoundJoin)
+    painter.setPen(pen)
+    painter.setBrush(Qt.NoBrush)
+
+    scale = size / 16.0
+
+    # Eye outline: upper and lower curves
+    eye_path = QPainterPath()
+    eye_path.moveTo(2.0 * scale, 8.0 * scale)
+    eye_path.quadTo(8.0 * scale, 3.0 * scale, 14.0 * scale, 8.0 * scale)
+    eye_path.quadTo(8.0 * scale, 13.0 * scale, 2.0 * scale, 8.0 * scale)
+    painter.drawPath(eye_path)
+
+    # Pupil (center circle)
+    painter.setBrush(col)
+    painter.drawEllipse(QRectF(6.4 * scale, 6.4 * scale, 3.2 * scale, 3.2 * scale))
+    painter.setBrush(Qt.NoBrush)
+
+    if show:
+        # Diagonal slash indicating obscured or hidden toggle
+        slash_pen = QPen(col, 1.5)
+        slash_pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(slash_pen)
+        painter.drawLine(3.0 * scale, 13.0 * scale, 13.0 * scale, 3.0 * scale)
+
+    painter.end()
+    return QIcon(pixmap)
+
+
+class PasswordLineEdit(QLineEdit):
+    """Secure text input bar with an integrated trailing action to view or hide the passphrase."""
+
+    def __init__(self, placeholder: str = "", parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setEchoMode(QLineEdit.EchoMode.Password)
+        if placeholder:
+            self.setPlaceholderText(placeholder)
+
+        self._is_password_visible = False
+        self._toggle_action = self.addAction(
+            create_eye_icon(show=False),
+            QLineEdit.ActionPosition.TrailingPosition,
+        )
+        self._toggle_action.setToolTip("Show passphrase")
+        self._toggle_action.triggered.connect(self.toggle_visibility)
+
+    def is_password_visible(self) -> bool:
+        """Return True if the text is currently displayed in plain text."""
+        return self._is_password_visible
+
+    def toggle_visibility(self) -> None:
+        """Toggle between password masking and plain-text visibility."""
+        self._is_password_visible = not self._is_password_visible
+        if self._is_password_visible:
+            self.setEchoMode(QLineEdit.EchoMode.Normal)
+            self._toggle_action.setIcon(create_eye_icon(show=True))
+            self._toggle_action.setToolTip("Hide passphrase")
+        else:
+            self.setEchoMode(QLineEdit.EchoMode.Password)
+            self._toggle_action.setIcon(create_eye_icon(show=False))
+            self._toggle_action.setToolTip("Show passphrase")
+
+
 class CryptoTaskWorker(QObject):
     """Run heavy cryptographic tasks on a worker thread with progress and completion signals."""
 
@@ -160,6 +234,40 @@ class CryptoTaskWorker(QObject):
             self.error_occurred.emit(str(exc))
         finally:
             self.finished.emit()
+
+
+class TaskBridge(QObject):
+    """Bridge background worker signals safely to the main GUI thread.
+
+    Because signals connected to plain Python functions default to DirectConnection
+    (which executes on the emitter's worker thread), slots on this QObject (which has
+    main-thread affinity) ensure that UI callbacks, widget updates, and modal dialogs
+    are always marshaled to and executed on the Qt main GUI thread.
+    """
+
+    def __init__(
+        self,
+        on_success,
+        on_error=None,
+        cleanup=None,
+        parent: QObject | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.on_success = on_success
+        self.on_error = on_error
+        self.cleanup = cleanup
+
+    def handle_success(self, result: Any) -> None:
+        if self.cleanup:
+            self.cleanup()
+        if self.on_success:
+            self.on_success(result)
+
+    def handle_error(self, err_msg: str) -> None:
+        if self.cleanup:
+            self.cleanup()
+        if self.on_error:
+            self.on_error(err_msg)
 
 
 class StatusBadge(QFrame):

@@ -4,7 +4,11 @@ from typing import Any
 
 from crypto.rsa import RSAService
 
-from .validation import validate_existing_directories, validate_existing_files
+from .validation import (
+    ToolValidationClarification,
+    validate_existing_directories,
+    validate_existing_files,
+)
 
 
 class RSATool:
@@ -46,6 +50,14 @@ class RSATool:
             "encrypt": {"output_folder": "Output directory"},
             "decrypt": {"output_folder": "Output directory"},
         }
+
+        if operation == "generate_key":
+            passphrase = arguments.get("passphrase")
+            if not passphrase or not str(passphrase).strip():
+                raise ToolValidationClarification(
+                    "A passphrase is required to protect your RSA private key.\n\n"
+                    "Please provide a passphrase to proceed with key pair generation."
+                )
 
         validate_existing_files(arguments, file_arguments.get(operation, {}))
         validate_existing_directories(

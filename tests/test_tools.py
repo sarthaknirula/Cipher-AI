@@ -132,12 +132,24 @@ class ToolAdapterTests(unittest.TestCase):
             tool.service.generate_key_pair = Mock(
                 return_value=("public.pem", "private.pem")
             )
-            arguments = {"key_length": 4096, "save_directory": save_directory}
+            arguments = {
+                "key_length": 4096,
+                "save_directory": save_directory,
+                "passphrase": "tool_passphrase",
+            }
 
             result = tool.execute("generate_key", arguments)
 
             self.assertEqual(result, ("public.pem", "private.pem"))
             tool.service.generate_key_pair.assert_called_once_with(**arguments)
+
+    def test_rsa_generate_key_pair_missing_passphrase_raises_clarification(self) -> None:
+        """RSA generate_key should raise ToolValidationClarification if passphrase is missing."""
+        tool = RSATool()
+        arguments = {"key_length": 4096}
+        with self.assertRaises(ToolValidationClarification) as ctx:
+            tool.execute("generate_key", arguments)
+        self.assertIn("A passphrase is required", ctx.exception.question)
 
     def test_double_des_encrypt_dispatches_to_service(self) -> None:
         """Double DES encrypt should call DoubleDESService.encrypt."""

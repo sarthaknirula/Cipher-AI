@@ -140,7 +140,7 @@ class CryptoEnhancementsTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             service = RSAService()
-            pub_path, priv_path = service.generate_key_pair(2048, tmp_path)
+            pub_path, priv_path = service.generate_key_pair(2048, tmp_path, passphrase="hybrid_passphrase")
 
             input_file = tmp_path / "large_document.txt"
             # 2048-bit RSA OAEP max plaintext is ~190 bytes. We encrypt 20,000 bytes.
@@ -151,10 +151,23 @@ class CryptoEnhancementsTests(unittest.TestCase):
             enc_path = service.encrypt_file(pub_path, input_file, tmp_path / "enc")
             self.assertTrue(enc_path.exists())
 
-            dec_path = service.decrypt_file(priv_path, enc_path, tmp_path / "dec")
+            dec_path = service.decrypt_file(priv_path, enc_path, tmp_path / "dec", passphrase="hybrid_passphrase")
             self.assertTrue(dec_path.exists())
             self.assertEqual(dec_path.read_text(), large_content)
             self.assertEqual(dec_path.name, "decrypted_large_document.txt")
+
+    def test_rsa_generate_key_pair_requires_passphrase(self) -> None:
+        """Generating RSA key pair without passphrase or with empty passphrase must raise ValueError."""
+        service = RSAService()
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            with self.assertRaises(ValueError) as ctx:
+                service.generate_key_pair(2048, tmp_path, passphrase=None)
+            self.assertIn("Passphrase is required", str(ctx.exception))
+
+            with self.assertRaises(ValueError) as ctx2:
+                service.generate_key_pair(2048, tmp_path, passphrase="   ")
+            self.assertIn("Passphrase is required", str(ctx2.exception))
 
     # Item 5: Double DES Cascade & Secondary IV
     def test_double_des_independent_iv(self) -> None:
@@ -224,12 +237,105 @@ class CryptoEnhancementsTests(unittest.TestCase):
         self.assertIn("12-byte", page.enc_iv_input.placeholderText())
 
     def test_rsa_gui_passphrase_fields(self) -> None:
-        """RSA page provides passphrase input for key generation and decryption."""
+        """RSA page provides passphrase input for key generation and decryption with visibility toggling."""
         page = RSAPage()
         self.assertTrue(hasattr(page, "key_passphrase_input"))
         self.assertTrue(hasattr(page, "dec_passphrase_input"))
         self.assertEqual(page.key_passphrase_input.echoMode(), page.key_passphrase_input.EchoMode.Password)
         self.assertEqual(page.dec_passphrase_input.echoMode(), page.dec_passphrase_input.EchoMode.Password)
+        self.assertFalse(page.key_passphrase_input.is_password_visible())
+        self.assertFalse(page.dec_passphrase_input.is_password_visible())
+
+        # Toggle visibility on key generation passphrase input
+        page.key_passphrase_input.toggle_visibility()
+        self.assertEqual(page.key_passphrase_input.echoMode(), page.key_passphrase_input.EchoMode.Normal)
+        self.assertTrue(page.key_passphrase_input.is_password_visible())
+
+        page.key_passphrase_input.toggle_visibility()
+        self.assertEqual(page.key_passphrase_input.echoMode(), page.key_passphrase_input.EchoMode.Password)
+        self.assertFalse(page.key_passphrase_input.is_password_visible())
+
+        # Toggle visibility on decryption passphrase input
+        page.dec_passphrase_input.toggle_visibility()
+        self.assertEqual(page.dec_passphrase_input.echoMode(), page.dec_passphrase_input.EchoMode.Normal)
+        self.assertTrue(page.dec_passphrase_input.is_password_visible())
+
+        page.dec_passphrase_input.toggle_visibility()
+        self.assertEqual(page.dec_passphrase_input.echoMode(), page.dec_passphrase_input.EchoMode.Password)
+        self.assertFalse(page.dec_passphrase_input.is_password_visible())
+
+    def test_password_line_edit_trailing_action(self) -> None:
+        """PasswordLineEdit trailing action triggers visibility toggle and updates tooltip."""
+        from gui.components import PasswordLineEdit
+        le = PasswordLineEdit("Test placeholder")
+        self.assertEqual(le.echoMode(), le.EchoMode.Password)
+        self.assertEqual(le._toggle_action.toolTip(), "Show passphrase")
+
+        # Trigger via action click
+        le._toggle_action.trigger()
+        self.assertEqual(le.echoMode(), le.EchoMode.Normal)
+        self.assertTrue(le.is_password_visible())
+        self.assertEqual(le._toggle_action.toolTip(), "Hide passphrase")
+
+        # Trigger again
+        le._toggle_action.trigger()
+        self.assertEqual(le.echoMode(), le.EchoMode.Password)
+        self.assertFalse(le.is_password_visible())
+        self.assertEqual(le._toggle_action.toolTip(), "Show passphrase")
+
+    def test_task_bridge_main_thread_execution(self) -> None:
+        """TaskBridge guarantees callbacks and widget updates execute strictly on the main thread."""
+        from PySide6.QtCore import QThread
+        from PySide6.QtWidgets import QApplication, QLabel
+        from gui.components import CryptoTaskWorker, TaskBridge
+
+        app = QApplication.instance()
+        self.assertIsNotNone(app)
+
+        test_label = QLabel("Initial")
+        test_label.setTextInteractionFlags(test_label.textInteractionFlags().TextSelectableByMouse)
+
+        main_thread_checked = []
+        cleaned_up = []
+
+        def worker_task() -> str:
+            return "worker_result_ok"
+
+        def on_success_callback(result: str) -> None:
+            # Must run on main Qt GUI thread
+            is_main = QThread.currentThread() == app.thread()
+            main_thread_checked.append(is_main)
+            test_label.setText(result)
+
+        def cleanup_callback() -> None:
+            cleaned_up.append(True)
+
+        worker = CryptoTaskWorker(worker_task)
+        thread = QThread()
+        worker.moveToThread(thread)
+        bridge = TaskBridge(
+            on_success=on_success_callback,
+            cleanup=cleanup_callback,
+        )
+
+        from PySide6.QtCore import Qt
+        thread.started.connect(worker.run)
+        worker.result_ready.connect(bridge.handle_success, Qt.QueuedConnection)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+
+        thread.start()
+        while thread.isRunning():
+            app.processEvents()
+            thread.wait(10)
+
+        thread.deleteLater()
+        bridge.deleteLater()
+
+        self.assertTrue(cleaned_up)
+        self.assertTrue(main_thread_checked)
+        self.assertTrue(main_thread_checked[0], "TaskBridge callback must execute on main Qt thread")
+        self.assertEqual(test_label.text(), "worker_result_ok")
 
 
 if __name__ == "__main__":

@@ -32,7 +32,9 @@ class RSAService:
         save_directory: Path | None = None,
         passphrase: str | None = None,
     ) -> tuple[Path, Path]:
-        """Generate RSA key pair with optional passphrase protection on the private key."""
+        """Generate RSA key pair with mandatory passphrase protection on the private key."""
+        if not passphrase or not passphrase.strip():
+            raise ValueError("Passphrase is required to protect the RSA private key.")
         self._validate_key_size(key_length)
         if save_directory is None:
             save_directory = get_timestamped_directory("keys", f"RSA_{key_length}")
@@ -40,7 +42,7 @@ class RSAService:
             save_directory = ensure_directory(Path(save_directory))
 
         private_key, public_key = self._generate_keys(key_length)
-        private_ser = self._serialize_private_key(private_key, passphrase=passphrase)
+        private_ser = self._serialize_private_key(private_key, passphrase=passphrase.strip())
         public_ser = self._serialize_public_key(public_key)
 
         private_key_path = self._save_key(save_directory / "private_key.pem", private_ser)
@@ -193,11 +195,10 @@ class RSAService:
         )
         return private_key, private_key.public_key()
 
-    def _serialize_private_key(self, private_key: RSAPrivateKey, passphrase: str | None = None) -> bytes:
-        if passphrase:
-            enc_algorithm = serialization.BestAvailableEncryption(passphrase.encode("utf-8"))
-        else:
-            enc_algorithm = serialization.NoEncryption()
+    def _serialize_private_key(self, private_key: RSAPrivateKey, passphrase: str) -> bytes:
+        if not passphrase or not passphrase.strip():
+            raise ValueError("Passphrase is required to serialize RSA private key.")
+        enc_algorithm = serialization.BestAvailableEncryption(passphrase.strip().encode("utf-8"))
 
         return private_key.private_bytes(
             encoding=serialization.Encoding.PEM,
