@@ -45,7 +45,7 @@ The workstation combines hardened, non-blocking cryptographic engines with an AI
 | **AES** | Symmetric Block Cipher | 128, 192, 256 bits | **GCM** (AEAD, Default)<br>CBC (PKCS#7) | 12 bytes (GCM)<br>16 bytes (CBC) | **High Assurance**: Recommended NIST FIPS 197 standard for all general-purpose file encryption. |
 | **RSA** | Asymmetric Key Pair | 2048, 3072, 4096 bits | OAEP (SHA-256 / MGF1)<br>Hybrid AES-256-GCM | N/A (OAEP)<br>12 bytes (Hybrid) | **High Assurance**: Public-key encryption with mandatory passphrase protection on all private keys. |
 | **Double DES** | Symmetric Cascade | 112 bits (2x 56-bit keys) | Cascade CBC | 8 bytes | **Legacy / Educational**: Vulnerable to Meet-in-the-Middle attacks (effective strength ~57 bits). |
-| **Triple DES** | Symmetric Cascade | 168 bits (3x 56-bit keys) | 3DES-EDE CBC | 8 bytes | **Legacy / Deprecated**: Vulnerable to Sweet32 64-bit block collision attacks. Maintained for legacy interop. |
+| **Triple DES** | Symmetric Cascade | 168 bits (3x 56-bit keys) | 3-Pass CBC Cascade | 8 bytes | **Legacy Cascade (Non-Interoperable)**: Implemented as a 3-pass file-level CBC cascade ($E \rightarrow D \rightarrow E$). Does not interoperate with standard per-block ANSI X9.52 3DES-CBC. Vulnerable to Sweet32 collisions. |
 | **Hashing** | Cryptographic Digests | 256, 512 bits | SHA-2, SHA-3, BLAKE2 | N/A | **Integrity & Verification**: File integrity checking and constant-time HMAC message authentication. |
 
 ---
